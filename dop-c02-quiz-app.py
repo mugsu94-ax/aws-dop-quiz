@@ -448,6 +448,7 @@ mode = st.sidebar.radio(
 MAIN_TITLE = "(주)한진 RPA 프로세스 자동화 운영 및 트랜잭션 진단 콘솔" if work_mode else "☁️ AWS Certified DevOps Engineer Professional (DOP-C02)"
 SUB_TITLE = "UiPath 워크플로우 예외 정밀 분석 & 프로세스 자동화 운영 모니터링 시스템" if work_mode else "최신 427개 기출 정밀 복원 & 1:1 키워드 핀포인트 암기 노트"
 TICKET_PREFIX = "트랜잭션 ID: #RPA-TRX-" if work_mode else "QUESTION NO: #"
+SELECT_HEADER = "📋 워크플로우 예외 조치 가이드 선택:" if work_mode else "가장 적절한 답안을 선택하십시오:"
 BTN_SUBMIT = "▶ 예외 분석 및 모니터링 검증" if work_mode else "▶ 답안 제출 및 해설 확인"
 BTN_NEXT = "다음 트랜잭션 ▶" if work_mode else "다음 문제 ▶"
 BTN_PREV = "◀ 이전 트랜잭션" if work_mode else "◀ 이전 문제"
@@ -680,7 +681,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # 보기 선택 영역
-st.markdown(f"##### {SELECT_HEADER}")
 
 user_selections = []
 

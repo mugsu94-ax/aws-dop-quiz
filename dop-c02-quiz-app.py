@@ -425,8 +425,13 @@ if input_user_id != st.session_state.get("user_id", ""):
         h, b = db_load_user_data(input_user_id)
         st.session_state.history = h
         st.session_state.bookmarks = b
-        st.toast(f"'{input_user_id}' 동기화 완료!", icon="✅")  # rerun과 무관하게 표시됨
+        # 바로 그리지 않고 session_state에 메시지를 임시 저장
+        st.session_state.sync_msg = f"'{input_user_id}' 동기화 완료!"
     st.rerun()
+
+# rerun 후 아래 코드에서 메시지 출력 (pop을 사용하면 다음 화면 조작 시 자연스럽게 사라짐)
+if "sync_msg" in st.session_state:
+    st.sidebar.success(st.session_state.pop("sync_msg"))
 
 st.sidebar.divider()
 st.sidebar.title("⚙️ 업무 점검 메뉴" if work_mode else "⚙️ 시험 및 분석 메뉴")

@@ -22,13 +22,14 @@ ACCENT_COLOR = "#FF9900"
 BG_CARD_COLOR = "#F8F9FA"
 
 # =========================================
-# 데이터베이스 동기화 함수 (SQLite)
+# 데이터베이스 동기화 및 사용자 편집 DB (SQLite)
 # =========================================
 DB_PATH = "dop_c02_user_progress.db"
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+    # 사용자 풀이 이력 및 북마크
     c.execute("""
         CREATE TABLE IF NOT EXISTS user_progress (
             user_id TEXT,
@@ -38,6 +39,17 @@ def init_db():
             is_bookmarked INTEGER,
             updated_at TIMESTAMP,
             PRIMARY KEY (user_id, q_id)
+        )
+    """)
+    # 사용자 직접 수정 문제/정답/해설 저장 테이블
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS custom_edits (
+            q_id INTEGER PRIMARY KEY,
+            question TEXT,
+            options TEXT,
+            answer TEXT,
+            explanation TEXT,
+            updated_at TIMESTAMP
         )
     """)
     conn.commit()
@@ -110,19 +122,105 @@ def db_delete_user_data(user_id):
     conn.commit()
     conn.close()
 
+def db_save_custom_edit(q_id, question, options_dict, answer_list, explanation):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    opts_json = json.dumps(options_dict, ensure_ascii=False)
+    ans_json = json.dumps(answer_list, ensure_ascii=False)
+    now = datetime.now().isoformat()
+    c.execute("""
+        INSERT INTO custom_edits (q_id, question, options, answer, explanation, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(q_id) DO UPDATE SET
+            question=excluded.question,
+            options=excluded.options,
+            answer=excluded.answer,
+            explanation=excluded.explanation,
+            updated_at=excluded.updated_at
+    """, (q_id, question, opts_json, ans_json, explanation, now))
+    conn.commit()
+    conn.close()
+
+def db_load_custom_edits():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('SELECT q_id, question, options, answer, explanation FROM custom_edits')
+    rows = c.fetchall()
+    conn.close()
+    edits = {}
+    for row in rows:
+        qid, q_text, opts_str, ans_str, exp_text = row
+        edits[qid] = {
+            "question": q_text,
+            "options": json.loads(opts_str),
+            "answer": json.loads(ans_str),
+            "explanation": exp_text
+        }
+    return edits
+
+def db_delete_custom_edit(q_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('DELETE FROM custom_edits WHERE q_id=?', (q_id,))
+    conn.commit()
+    conn.close()
+
 # =========================================
-# 데이터 로드
+# 하이라이트 자동 생성 헬퍼 함수
+# =========================================
+def auto_generate_highlights(q_text, options_dict, answer_list):
+    # 1. Question Highlight: 지문의 핵심 구문 강조
+    sents = [s.strip() for s in re.split(r'[\n\.]', q_text) if len(s.strip()) > 10]
+    q_hl = q_text
+    if len(sents) >= 2:
+        target_sents = sents[-2:]
+        for ts in target_sents:
+            if ts in q_hl and not '<span' in ts:
+                q_hl = q_hl.replace(ts, f'<span style="color: #0073BB; font-weight: bold;">{ts}</span>', 1)
+    elif len(sents) == 1:
+        ts = sents[0]
+        if ts in q_hl:
+            q_hl = q_hl.replace(ts, f'<span style="color: #0073BB; font-weight: bold;">{ts}</span>', 1)
+
+    # 2. Options Highlight: 정답 보지의 유일 키워드/문장만 강조
+    opts_hl = {}
+    incorrect_texts = [options_dict[k] for k in options_dict if k not in answer_list]
+
+    for k, val in options_dict.items():
+        if k in answer_list:
+            opt_sents = [s.strip() for s in re.split(r'[\n\.]', val) if len(s.strip()) > 5]
+            best_clause = None
+            for os_item in opt_sents:
+                is_shared = False
+                for inc_val in incorrect_texts:
+                    if os_item[:15].lower() in inc_val.lower():
+                        is_shared = True
+                        break
+                if not is_shared:
+                    best_clause = os_item
+                    break
+            if best_clause and best_clause in val:
+                opts_hl[k] = val.replace(best_clause, f':blue[**{best_clause}**]', 1)
+            else:
+                opts_hl[k] = f':blue[**{val}**]'
+        else:
+            opts_hl[k] = val
+
+    return q_hl, opts_hl
+
+# =========================================
+# 데이터 로드 (파일 + DB 커스텀 편집 오버레이)
 # =========================================
 def load_questions():
     possible_paths = [
+        "dop-c02-questions-v4.json",
         "dop-c02-questions-v3.json",
         "dop-c02-questions-v2.json",
         "dop-c02-questions-v1.json",
         "dop-c02-questions.json",
-        "/workspace/artifacts/dop-c02-questions-v2.json",
-        "/workspace/artifacts/dop-c02-questions-v1.json",
-        "/workspace/artifacts/dop-c02-questions.json",
-        "/workspace/scratch/dop-c02-questions-v2.json"
+        "/workspace/artifacts/dop-c02-questions-v4.json",
+        "/workspace/artifacts/dop-c02-questions-v3.json",
+        "/workspace/artifacts/dop-c02-questions.json"
     ]
     json_path = None
     for p in possible_paths:
@@ -136,8 +234,22 @@ def load_questions():
         
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
-        
+
+    # DB에 커스텀 수정된 문제 오버레이 적용
+    custom_edits = db_load_custom_edits()
     for q in data:
+        qid = q["id"]
+        if qid in custom_edits:
+            ced = custom_edits[qid]
+            q["question"] = ced["question"]
+            q["options"] = ced["options"]
+            q["answer"] = ced["answer"]
+            q["explanation"] = ced["explanation"]
+            q_hl, opts_hl = auto_generate_highlights(q["question"], q["options"], q["answer"])
+            q["question_highlighted"] = q_hl
+            q["options_highlighted"] = opts_hl
+
+        # 마크다운 잔여 별표 정제
         q["question"] = re.sub(r'\*\*(.*?)\*\*', r'\1', q["question"])
         if "options" in q and isinstance(q["options"], dict):
             for k in q["options"]:
@@ -145,10 +257,10 @@ def load_questions():
         if "explanation" in q:
             q["explanation"] = re.sub(r'\*\*(.*?)\*\*', r'\1', q["explanation"])
             
-    return data
+    return data, json_path
 
 try:
-    questions = load_questions()
+    questions, loaded_json_path = load_questions()
     q_dict = {q["id"]: q for q in questions}
     all_q_ids = [q["id"] for q in questions]
 except Exception as e:
@@ -251,14 +363,16 @@ def get_similar_questions(target_q_id, top_k=3):
         
     target_vec = tfidf_matrix[target_idx]
     scores = np.dot(tfidf_matrix, target_vec)
-    scores[target_idx] = -1.0
     
-    top_indices = np.argsort(scores)[::-1][:top_k]
-    results = []
+    top_indices = np.argsort(scores)[::-1]
+    similar_items = []
     for idx in top_indices:
-        if scores[idx] > 0.1:
-            results.append((all_q_ids[idx], float(scores[idx])))
-    return results
+        qid = all_q_ids[idx]
+        if qid != target_q_id and scores[idx] > 0.1:
+            similar_items.append((qid, float(scores[idx])))
+            if len(similar_items) >= top_k:
+                break
+    return similar_items
 
 # =========================================
 # 세션 상태 초기화
@@ -278,10 +392,16 @@ if "memory_mode" not in st.session_state:
 if "user_id" not in st.session_state:
     st.session_state.user_id = ""
 
+# DB에서 복원
+if st.session_state.user_id and not st.session_state.history:
+    hist, bms = db_load_user_data(st.session_state.user_id)
+    st.session_state.history = hist
+    st.session_state.bookmarks = bms
+
 # =========================================
-# 🏢 스텔스 / 업무 모드 (한진 RPA 콘솔) 설정
+# 사이드바 설정 & 업무 위장 스텔스 모드
 # =========================================
-st.sidebar.markdown("### 🏢 스텔스 모드 설정")
+st.sidebar.markdown("### 🏢 업무 위장 모드 (Stealth)")
 work_mode = st.sidebar.toggle(
     "업무 모드 (Stealth Mode)",
     value=st.session_state.get("work_mode", False),
@@ -289,239 +409,145 @@ work_mode = st.sidebar.toggle(
 )
 st.session_state.work_mode = work_mode
 
-# PC-모바일 실시간 동기화 ID
 st.sidebar.divider()
 st.sidebar.markdown("### 🔄 PC-모바일 실시간 동기화")
 input_user_id = st.sidebar.text_input(
-    "동기화 사용자 ID 입력:",
+    "동기화 ID 입력:",
     value=st.session_state.user_id,
-    placeholder="예: hanjin_dev_01"
+    placeholder="예: hanjin_dev_01",
+    help="동일한 ID를 입력하면 PC와 모바일 간 학습 이력 및 북마크가 자동 동기화됩니다."
 )
 if input_user_id != st.session_state.user_id:
     st.session_state.user_id = input_user_id
-    if input_user_id:
-        db_hist, db_bms = db_load_user_data(input_user_id)
-        st.session_state.history.update(db_hist)
-        st.session_state.bookmarks.update(db_bms)
-        st.sidebar.success(f"'{input_user_id}' 사용자 데이터 로드 완료!")
+    hist, bms = db_load_user_data(input_user_id)
+    st.session_state.history = hist
+    st.session_state.bookmarks = bms
+    st.sidebar.success(f"ID '{input_user_id}' 동기화 완료!")
 
 st.sidebar.divider()
+st.sidebar.title("⚙️ 프로세스 점검 메뉴" if work_mode else "⚙️ 시험 및 분석 메뉴")
+st.sidebar.markdown(f"**총 점검 항목:** {len(questions)}개" if work_mode else f"**총 문제 수:** {len(questions)}개")
 
-# 용어 사전 (일반 모드 vs 스텔스 업무 모드)
-if work_mode:
-    TITLE_TEXT = "(주)한진 RPA 프로세스 자동화 운영 및 트랜잭션 진단 콘솔"
-    SUBTITLE_TEXT = "UiPath 워크플로우 예외 정밀 분석 & 프로세스 자동화 운영 모니터링 시스템"
-    TICKET_PREFIX = "트랜잭션 ID: #RPA-TRX-"
-    TICKET_SUFFIX = " | (주)한진 RPA 프로세스 점검 항목"
-    BTN_SUBMIT = "▶ 예외 분석 및 모니터링 검증"
-    BTN_PREV = "◀ 이전 프로세스"
-    BTN_NEXT = "다음 프로세스 ▶"
-    SELECT_HEADER = "📋 워크플로우 예외 조치 가이드 선택"
-    GUIDE_HEADER = "💡 표준 원인 분석 및 조치 가이드라인"
-    BTN_BOOKMARK_ADD = "📌 관심 프로세스 등록"
-    BTN_BOOKMARK_REMOVE = "📌 관심 프로세스 해제"
-    
-    mode_concept = "📚 UiPath RPA 개발 표준 가이드"
-    mode_weakness = "📊 프로세스 예외 분석 리포트"
-    mode_all = "🎯 전수 트랜잭션 모니터링 (1~427)"
-    mode_select = "🎯 특정 프로세스 ID 직접 조회"
-    mode_range = "🔀 구간 트랜잭션 점검"
-    mode_short = "⚡ 워크플로우 예외 키워드 점검"
-    mode_note = "📌 예외 로그 & 관심 프로세스 노트"
-else:
-    TITLE_TEXT = "☁️ AWS Certified DevOps Engineer Professional (DOP-C02) 암기 콘솔"
-    SUBTITLE_TEXT = "최신 427개 기출 정밀 복원 & 1:1 키워드 핀포인트 암기 모드 시스템"
-    TICKET_PREFIX = "QUESTION NO: #"
-    TICKET_SUFFIX = ""
-    BTN_SUBMIT = "▶ 답안 제출 및 해설 확인"
-    BTN_PREV = "◀ 이전 문제"
-    BTN_NEXT = "다음 문제 ▶"
-    SELECT_HEADER = "가장 적절한 답안을 선택하십시오:"
-    GUIDE_HEADER = "💡 정답 도출 공식 및 해설 가이드"
-    BTN_BOOKMARK_ADD = "📌 북마크 추가"
-    BTN_BOOKMARK_REMOVE = "📌 북마크 해제"
-    
-    mode_concept = "📚 [합격 보장] DOP-C02 핵심 개념 & 비교 가이드"
-    mode_weakness = "📊 [실시간] 나의 약점 진단 리포트"
-    mode_all = "1. 전체 문제 풀이 (1~427)"
-    mode_select = "2. 특정 문제 번호 직접 선택"
-    mode_range = "3. 구간 선택 풀이"
-    mode_short = "4. 핵심 주제별 퀴즈"
-    mode_note = "5. 오답 & 북마크 노트"
-
-# 메인 헤더
-st.markdown(f"""
-<div style="background-color: #232F3E; color: #FFFFFF; padding: 24px 32px; border-radius: 8px; margin-bottom: 24px;">
-    <h1 style="color: #FFFFFF; font-size: 2.0rem; font-weight: 700; margin-bottom: 6px;">{TITLE_TEXT}</h1>
-    <p style="color: #D5D9D9; font-size: 1.0rem; margin: 0;">{SUBTITLE_TEXT}</p>
-</div>
-""", unsafe_allow_html=True)
-
-# 사이드바 메뉴
-st.sidebar.title("⚙️ 업무 진단 메뉴" if work_mode else "⚙️ 시험 및 분석 메뉴")
-st.sidebar.markdown(f"**총 {('진단 항목' if work_mode else '문제')} 수:** {len(questions)}개")
+mode_all = "1. 전체 프로세스 점검 (1~427)" if work_mode else "1. 전체 문제 풀이 (1~427)"
+mode_select = "2. 특정 트랜잭션 ID 지정" if work_mode else "2. 특정 문제 번호 지정"
+mode_range = "3. 구간 선택 점검" if work_mode else "3. 구간 선택 풀이"
+mode_short = "4. 핵심 파이프라인별 퀴즈" if work_mode else "4. 핵심 주제별 퀴즈"
+mode_note = "5. 예외 조치 & 북마크 로그" if work_mode else "5. 오답노트 & 북마크"
+mode_diag = "6. 약점 진단 리포트" if work_mode else "6. [실시간] 나의 약점 진단 리포트"
+mode_guide = "7. RPA 업무 프로세스 표준 가이드" if work_mode else "7. DOP-C02 핵심 개념 & 비교 가이드"
 
 mode = st.sidebar.radio(
-    "원하시는 기능을 선택하세요:",
-    [mode_concept, mode_weakness, mode_all, mode_select, mode_range, mode_short, mode_note]
+    "원하시는 운영 방식을 선택하세요:" if work_mode else "원하시는 공부 방식을 선택하세요:",
+    [mode_all, mode_select, mode_range, mode_short, mode_note, mode_diag, mode_guide]
 )
 
 st.sidebar.divider()
 
-# 1. 개념 가이드 화면
-if mode == mode_concept:
-    st.markdown(f"## {mode_concept}")
-    if work_mode:
-        st.caption("(주)한진 RPA 프로세스 자동화 시스템 및 UiPath 워크플로우 운영을 위한 내부 개발 표준 가이드라인입니다.")
-    else:
-        st.caption("DOP-C02 시험 427개 기출 문제를 완벽히 다루기 위한 핵심 아키텍처 흐름, 비교 가이드, 키워드 트라이거 정리입니다.")
-        
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📌 1. RPA 아키텍처 표준" if work_mode else "📌 1. 핵심 아키텍처 요약",
-        "⚖️ 2. 워크플로우 비교 분석" if work_mode else "⚖️ 2. 유사 개념 정밀 비교",
-        "🔑 3. 예외 패턴 대응 키워드" if work_mode else "🔑 3. 정답 직결 키워드 (Triggers)",
-        "❌ 4. 프로세스 예외 소거 법칙" if work_mode else "❌ 4. 실전 오답 소거 법칙",
-        "🔍 5. RPA 모듈 사전 & 검색" if work_mode else "🔍 5. 전수 서비스 사전 & 검색"
-    ])
-    
-    with tab1:
-        st.markdown("""
-        ### 📌 1. DOP-C02 5대 핵심 파이프라인 & 거버넌스 아키텍처
-        
-        #### ① CI/CD 배포 전략 (CodePipeline & CodeDeploy)
-        * **In-Place Deployment**: 기존 인스턴스에 직접 배포. (다운타임 가능, 인프라 비용 최소)
-        * **Blue/Green Deployment**: 구 버전(Blue)과 신 버전(Green) 환경을 완벽 분리 후 트래픽을 한 번에 스위칭. (다운타임 Zero, 즉시 롤백 가능)
-        * **Canary / Linear Deployment**: CodeDeploy에서 10분마다 10%씩 비율을 점진적으로 높여가며 배포하는 방식.
+# =========================================
+# 약점 분석 로직 계산
+# =========================================
+cat_stats = {cat: {"total": 0, "correct": 0} for cat in CATEGORY_KEYWORDS.keys()}
+cat_stats["기타 DevOps 아키텍처 공통"] = {"total": 0, "correct": 0}
 
-        #### ② Infrastructure as Code & 멀티 계정 관리 (CloudFormation & StackSets)
-        * **CloudFormation StackSets**: 하나의 템플릿으로 **수십 개의 AWS 계정 및 다중 리전**에 스택을 자동 생성 및 업데이트.
-        * **Drift Detection (드리프트 감지)**: 콘솔에서 수동으로 변경된 리소스와 CloudFormation 템플릿 간의 차이를 자동 감지.
-        * **Nested Stacks (중첩 스택)**: 공통 네트워킹/보안 템플릿을 재사용 가능한 컴포넌트로 분리하여 관리.
+for q_item in questions:
+    qid = q_item["id"]
+    cats = classify_question(q_item)
+    if qid in st.session_state.history:
+        is_corr = st.session_state.history[qid]["is_correct"]
+        for cat in cats:
+            cat_stats[cat]["total"] += 1
+            if is_corr:
+                cat_stats[cat]["correct"] += 1
 
-        #### ③ 중앙 로깅, 데이터 보호 & 추적 (CloudWatch Logs & X-Ray)
-        * **CloudWatch Data Protection**: 로그 수집 시점에 민감한 데이터(`Emp-\\d{6}`, 카드번호 등)를 **자동 마스킹**. (`logs:Unmask` 권한 거부 적용)
-        * **AWS X-Ray & Service Lens**: 분산 마이크로서비스 환경에서 요청의 엔드투엔드 지연 시간을 추적 및 병목 구간 시각화.
+# =========================================
+# 헤더 출력
+# =========================================
+if work_mode:
+    st.markdown("""
+    <div style="background-color: #232F3E; color: #FFFFFF; padding: 24px 32px; border-radius: 8px; margin-bottom: 24px;">
+        <h1 style="color: #FFFFFF !important; font-size: 1.8rem !important; margin-bottom: 6px !important;">
+            (주)한진 RPA 프로세스 자동화 운영 및 트랜잭션 진단 콘솔
+        </h1>
+        <p style="color: #D5D9D9 !important; font-size: 0.95rem !important; margin: 0 !important;">
+            UiPath 워크플로우 예외 정밀 분석 & 프로세스 자동화 운영 모니터링 시스템
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <div style="background-color: #232F3E; color: #FFFFFF; padding: 24px 32px; border-radius: 8px; margin-bottom: 24px;">
+        <h1 style="color: #FFFFFF !important; font-size: 2.0rem !important; margin-bottom: 6px !important;">
+            ☁️ AWS Certified DevOps Engineer Professional (DOP-C02)
+        </h1>
+        <p style="color: #D5D9D9 !important; font-size: 1.0rem !important; margin: 0 !important;">
+            최신 427개 기출 정밀 복원 & 1:1 키워드 핀포인트 암기 노트 & 문제 직접 편집/저장 시스템
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
-        #### ④ 중앙 규정 준수 & 가드레일 (Control Tower, Config & SCP)
-        * **AWS Control Tower & Landing Zone**: 멀티 계정 보안 표준 계정 구조를 자동으로 설치 및 관리.
-        * **SCP (Service Control Policy)**: Organizations 상위 OU 수준에서 루트 사용자까지 포함해 특정 작업(`Denied`)을 중앙 강제 차단.
-        * **AWS Config & Conformance Packs**: 리소스 설정의 규정 미준수 여부를 지속 감지 및 SSM Automation으로 자동 수정(Remediation).
-        """)
-        
-    with tab2:
-        st.markdown("""
-        ### ⚖️ 2. 가장 헷갈리기 쉬운 DOP 유사 개념 정밀 비교
-        
-        #### ① Parameter Store vs Secrets Manager
-        * **SSM Parameter Store**: 일반 구성 매개변수 및 단순 문자열 저장. (기본 무료, 주기적 비밀번호 자동 순환 기능 없음)
-        * **AWS Secrets Manager**: DB 자격 증명, OAuth 토큰 등 교체 필요한 암호 저장. **(KMS 연동 + Lambda 기반 자동 비밀번호 순환(Rotation) 내장)**
-
-        #### ② EventBridge Rule vs CloudWatch Metric Alarm
-        * **EventBridge Rule**: 특정 이벤트 발생 시점(예: EC2 상태 변경, S3 업로드, GuardDuty 알람)에 **실시간 비동기 트리거**.
-        * **CloudWatch Metric Alarm**: 메트릭 지표가 특정 임계값을 넘어 지속될 때(예: CPU > 80% 5분 지속) **상태 기반 호출**.
-
-        #### ③ CloudFormation Ref vs Fn::GetAtt vs Fn::ImportValue
-        * **Ref**: 리소스의 물리적 ID (예: Ref InstanceId, Ref TopicName) 반환.
-        * **Fn::GetAtt**: 리소스의 세부 속성 (예: GetAtt ALB.DNSName, GetAtt EC2.PrivateIp) 반환.
-        * **Fn::ImportValue**: 다른 스택에서 `Outputs`로 `Export`한 교차 스택(Cross-Stack) 변수 참조.
-        """)
-        
-    with tab3:
-        st.markdown("""
-        ### 🔑 3. 지문 요구사항 ➔ 정답 직결 키워드 (Triggers)
-        
-        | 지문 요구사항 (Pattern) | 정답 직결 서비스 / 기술 |
-        | :--- | :--- |
-        | 로그 내 민감 정보/직원 ID 자동 마스킹 | **CloudWatch Logs Data Protection Policy + logs:Unmask Deny** |
-        | 멀티 계정/다중 리전에 동일 CloudFormation 배포 | **AWS CloudFormation StackSets** |
-        | DB 암호 자동 순환(Rotation) 및 암호화 저장 | **AWS Secrets Manager + AWS KMS** |
-        | 규정 미준수 리소스 자동 감지 및 자동 수정 | **AWS Config + Systems Manager Automation** |
-        | 배포 중 에러 발생 시 자동 롤백 & 트래픽 차단 | **CodeDeploy CloudWatch Alarm / Route 53 Health Check 롤백** |
-        | 배포 운영 오버헤드 최소화 서드파티 통합 | **AWS CodePipeline + GitHub Webhook / Jenkins Plugin** |
-        """)
-        
-    with tab4:
-        st.markdown("""
-        ### ❌ 4. 실전 오답 소거 5대 법칙
-        
-        1. **'SCP 정책에 Allow 조항을 추가하여 권한 부여'** ➔ SCP는 권한을 부여할 수 없음 (100% 오답).
-        2. **'로그 마스킹을 위해 수동 Lambda 로깅 필터 작성'** ➔ 운영 오버헤드가 크므로 CloudWatch Data Protection 선택이 정답.
-        3. **'Secrets Manager 대신 Parameter Store로 비밀번호 자동 순환 구성'** ➔ 자동 순환은 Secrets Manager 전용 기능.
-        4. **'단순 모니터링 요구 시 EC2 내 수동 크론탭(Crontab) 스크립트 실행'** ➔ 서버리스 EventBridge/CloudWatch 활용이 정답.
-        """)
-
-    with tab5:
-        st.markdown("### 🔍 5. 전수 핵심 서비스 사전 & 검색")
-        search_kw = st.text_input("🔍 서비스 이름 또는 키워드 검색 (예: CloudFormation, Secrets Manager, Pipeline, Logs):", "")
-        
-        dop_services = {
-            "AWS CodePipeline": "소스-빌드-배포 단계를 자동화하는 CI/CD 오케스트레이션 서비스",
-            "AWS CodeBuild": "소스 코드를 컴파일하고 테스트를 실행하는 완전 관리형 빌드 서비스",
-            "AWS CodeDeploy": "EC2, ECS, Lambda 등에 애플리케이션 배포를 자동화하는 서비스",
-            "AWS CloudFormation": "인프라를 코드로 관리(IaC)하고 템플릿으로 자동 생성하는 서비스",
-            "AWS Systems Manager (SSM)": "노드 관리, 패치, 파라미터 저장 및 자동화 작업을 수행하는 서비스",
-            "Amazon CloudWatch": "AWS 리소스 지표 수집, 중앙 로그 관리 및 알람을 제공하는 모니터링 서비스",
-            "AWS Organizations / Control Tower": "멀티 계정 중앙 구조 관리, SCP 보안 가드레일 강제 서비스",
-            "AWS Secrets Manager": "데이터베이스 자격 증명 및 API 키를 KMS로 암호화하고 자동 순환하는 서비스"
-        }
-        
-        for name, desc in dop_services.items():
-            if not search_kw or search_kw.lower() in name.lower() or search_kw.lower() in desc.lower():
-                st.markdown(f"* **{name}**: {desc}")
-    st.stop()
-
-# 2. 약점 진단 화면
-elif mode == mode_weakness:
-    st.markdown(f"## {mode_weakness}")
-    st.caption("프로세스 풀이 데이터를 정밀 분석하여 업무 도메인별 예외 조치 취약 영역을 분석합니다." if work_mode else "풀이 데이터를 분석하여 DOP-C02 핵심 도메인별 취약 영역을 실시간 분석합니다.")
-    
-    cat_stats = {cat: {"total": 0, "correct": 0} for cat in CATEGORY_KEYWORDS.keys()}
-    cat_stats["기타 DevOps 아키텍처 공통"] = {"total": 0, "correct": 0}
-    
-    for q_id, res in st.session_state.history.items():
-        if q_id in q_dict:
-            q_item = q_dict[q_id]
-            cats = classify_question(q_item)
-            for c in cats:
-                cat_stats[c]["total"] += 1
-                if res["is_correct"]:
-                    cat_stats[c]["correct"] += 1
-                    
-    total_solved = len(st.session_state.history)
-    
-    if total_solved == 0:
-        st.info("💡 아직 진단 이력이 없습니다. 항목을 검증하면 도메인별 취약점이 실시간 계산됩니다!")
-    else:
-        st.markdown(f"### 📈 전체 운영 진단 현황: **{total_solved}개** 처리 완료" if work_mode else f"### 📈 전체 풀이 현황: **{total_solved}개** 문제 완료")
-        col1, col2, col3 = st.columns(3)
-        total_correct = sum(1 for h in st.session_state.history.values() if h["is_correct"])
-        overall_acc = (total_correct / total_solved * 100) if total_solved > 0 else 0
-        
-        with col1:
-            st.metric("진단 항목 수" if work_mode else "총 풀이 문제 수", f"{total_solved}개")
-        with col2:
-            st.metric("정상 처리 수" if work_mode else "총 정답 문제 수", f"{total_correct}개")
-        with col3:
-            st.metric("자동화 정상 처리율" if work_mode else "전체 평균 정답률", f"{overall_acc:.1f}%")
-            
-        st.divider()
-        st.markdown("### 🔍 도메인별 예외 조치 정밀 진단" if work_mode else "### 🔍 도메인별 정답률 정밀 진단")
-        
-        for cat, s in cat_stats.items():
-            if s["total"] > 0:
-                acc = (s["correct"] / s["total"]) * 100
-                status_icon = "🟢 양호" if acc >= 75 else ("🟡 보완 권장" if acc >= 50 else "🔴 취약 (집중 학습 필요)")
-                st.markdown(f"#### {cat} — **{acc:.1f}%** ({s['correct']}/{s['total']}개 성공) | {status_icon}")
-                st.progress(int(acc))
-                st.divider()
-    st.stop()
-
-# 3. 일반 문제 풀이 모드 처리
+# =========================================
+# 메뉴별 메인 화면 처리
+# =========================================
 active_q_list = all_q_ids
 
-if mode == mode_select:
+if mode == mode_guide:
+    st.markdown("### 📚 DOP-C02 핵심 아키텍처 & 비교 가이드" if not work_mode else "### 📚 (주)한진 RPA 자동화 프로세스 표준 가이드")
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📌 핵심 아키텍처 요약", "⚖️ 유사 개념 정밀 비교", "🔑 정답 직결 키워드", "❌ 실전 오답 소거 법칙", "🔍 서비스 사전 검색"
+    ])
+    with tab1:
+        st.markdown("""
+        #### ☁️ DOP-C02 핵심 서비스 리드인 요약
+        * **AWS CodePipeline & CodeDeploy**: 블루/그린 배포, 인플레이스 배포, 카나리 배포 전략 구현
+        * **AWS CloudFormation & StackSets**: 멀티 계정, 멀티 리전 인프라의 코드화(IaC) 및 Drift 감지
+        * **AWS Systems Manager (SSM)**: Parameter Store, Patch Manager, Run Command 통합 서버 관리
+        * **Amazon CloudWatch & EventBridge**: 로그 데이터 보호 마스킹, 지표 경보 및 이벤트 기반 자동 조치
+        * **AWS Organizations & SCP**: 중앙 집중식 가드레일 거버넌스 및 명시적 Deny 정책 관리
+        """)
+    with tab2:
+        st.markdown("""
+        | 비교 서비스 | 차이점 및 판별 기준 (Triggers) |
+        | :--- | :--- |
+        | **SSM Parameter Store vs Secrets Manager** | 간단한 환경변수/무료 ➔ Parameter Store / 암호 자동 순환(Rotation), 고급 보안 ➔ Secrets Manager |
+        | **In-Place Deployment vs Blue/Green** | 가용성 저하 허용/비용 절감 ➔ In-Place / 무중단, 빠른 롤백 ➔ Blue/Green |
+        | **EventBridge vs CloudWatch Alarm** | 상태 변화 기반 이벤트 트리거 ➔ EventBridge / 수치 지표 임계값 초과 ➔ CloudWatch Alarm |
+        | **Control Tower vs Organizations** | 멀티 계정 표준 랜딩존 자동 구축 ➔ Control Tower / 계정 그룹 구조 및 SCP 제어 ➔ Organizations |
+        """)
+    with tab3:
+        st.markdown("""
+        * **`Emp-\\d{6}` + 로그 직원 ID 마스킹** ➔ CloudWatch Logs Data Protection Policy + `logs:Unmask` Deny
+        * **VPC 엔드포인트 간 통신 수집** ➔ VPC Flow Logs
+        * **CodePipeline 교차 계정 배포** ➔ S3 버킷 KMS 키 및 타 계정 IAM 역할 수임 (AssumeRole)
+        """)
+    with tab4:
+        st.markdown("""
+        1. **수동 조치(Manual step)가 언급된 선택지**: "운영 오버헤드 최소화" 요구조건 시 90% 이상 오답.
+        2. **IAM 권한 허용 시 `Action: "*"` 과도 부여**: 최소 권한 원칙 위배로 오답.
+        3. **단일 가용영역(Single-AZ) 배치**: 고가용성(High Availability) 요구 시 오답.
+        """)
+    with tab5:
+        search_kw = st.text_input("🔍 서비스 이름 또는 키워드로 검색 (예: CodePipeline, CloudFormation, SSM, Lambda):", "")
+        if search_kw:
+            st.info(f"'{search_kw}' 키워드로 관련 문제를 풀려면 왼쪽 사이드바의 '4. 핵심 주제별 퀴즈'를 이용하세요.")
+    st.stop()
+
+elif mode == mode_diag:
+    st.markdown("### 📊 [실시간] 나의 약점 진단 리포트" if not work_mode else "### 📊 RPA 프로세스 예외 진단 리포트")
+    total_solved = sum(s["total"] for s in cat_stats.values())
+    if total_solved == 0:
+        st.info("아직 풀어본 문제 기록이 없습니다. 문제를 푼 후 오시면 약점 진단 결과를 확인하실 수 있습니다.")
+    else:
+        st.markdown(f"#### 📈 전체 풀이 현황: 총 {total_solved}개 진단 완료")
+        for cat, stat in cat_stats.items():
+            if stat["total"] > 0:
+                acc = (stat["correct"] / stat["total"]) * 100
+                st.markdown(f"**{cat}** (정답률: {acc:.1f}% | {stat['correct']}/{stat['total']}개)")
+                st.progress(acc / 100.0)
+    st.stop()
+
+elif mode == mode_select:
     selected_num = st.sidebar.number_input(
-        "프로세스 ID 입력 (1~427)" if work_mode else "문제 번호 입력 (1~427)",
+        "트랜잭션 ID 입력 (1~427)" if work_mode else "문제 번호 입력 (1~427)",
         min_value=min(all_q_ids),
         max_value=max(all_q_ids),
         value=st.session_state.current_q_id if st.session_state.current_q_id in all_q_ids else min(all_q_ids),
@@ -534,57 +560,65 @@ if mode == mode_select:
 
 elif mode == mode_range:
     range_start, range_end = st.sidebar.slider(
-        "모니터링 범위 지정" if work_mode else "문제 범위 지정",
+        "점검 구간 선택" if work_mode else "풀이 구간 선택",
         min_value=min(all_q_ids),
         max_value=max(all_q_ids),
-        value=(1, 50)
+        value=(min(all_q_ids), max(all_q_ids))
     )
-    active_q_list = [qid for qid in all_q_ids if range_start <= qid <= range_end]
-    if not active_q_list:
-        active_q_list = all_q_ids
-    if st.session_state.current_q_id not in active_q_list:
+    active_q_list = [i for i in all_q_ids if range_start <= i <= range_end]
+    if st.session_state.current_q_id not in active_q_list and active_q_list:
         st.session_state.current_q_id = active_q_list[0]
         st.session_state.submitted = False
         st.session_state.selected_options = []
 
 elif mode == mode_short:
-    keywords = ["CodePipeline", "CloudFormation", "CloudWatch", "Systems Manager", "Secrets Manager", "Organizations", "Auto Scaling", "Lambda"]
-    selected_kw = st.sidebar.selectbox("예외 키워드 선택:" if work_mode else "핵심 주제 선택:", keywords)
+    st.sidebar.markdown("### 🔑 핵심 주제 패턴")
+    keywords = list(CATEGORY_KEYWORDS.keys())
+    selected_kw = st.sidebar.selectbox("공부할 주제를 선택하세요:", keywords)
+    kws = CATEGORY_KEYWORDS[selected_kw]
+    
     filtered_q = []
-    for q in questions:
-        text = f"{q['question']} {' '.join(q['options'].values())} {q['explanation']}"
-        if selected_kw.lower() in text.lower():
-            filtered_q.append(q["id"])
+    for q_item in questions:
+        text = f"{q_item.get('question', '')} {' '.join(q_item.get('options', {}).values())} {q_item.get('explanation', '')}".lower()
+        if any(kw in text for kw in kws):
+            filtered_q.append(q_item["id"])
+            
     if filtered_q:
         active_q_list = filtered_q
-    if st.session_state.current_q_id not in active_q_list:
-        st.session_state.current_q_id = active_q_list[0]
-        st.session_state.submitted = False
-        st.session_state.selected_options = []
+        st.sidebar.caption(f"'{selected_kw}' 관련 문제: 총 {len(filtered_q)}개 발견")
+        if st.session_state.current_q_id not in active_q_list:
+            st.session_state.current_q_id = active_q_list[0]
+            st.session_state.submitted = False
+            st.session_state.selected_options = []
+    else:
+        st.sidebar.warning("해당하는 문제가 없습니다.")
 
 elif mode == mode_note:
-    filter_type = st.sidebar.radio("노트 선택", ["📌 관심 프로세스", "❌ 예외 발생 항목"] if work_mode else ["📌 북마크한 문제", "❌ 틀린 문제"])
-    if "북마크" in filter_type or "관심" in filter_type:
+    filter_type = st.sidebar.radio("노트 선택", ["📌 북마크한 문제", "❌ 틀린 문제"])
+    if filter_type == "📌 북마크한 문제":
         active_q_list = sorted(list(st.session_state.bookmarks))
     else:
-        active_q_list = [qid for qid, res in st.session_state.history.items() if not res["is_correct"]]
+        wrong_ids = [qid for qid, h in st.session_state.history.items() if not h["is_correct"]]
+        active_q_list = sorted(wrong_ids)
+        
     if not active_q_list:
-        st.sidebar.info("해당하는 항목이 아직 없습니다.")
-        active_q_list = all_q_ids
-    if st.session_state.current_q_id not in active_q_list:
+        st.sidebar.info("해당하는 문제가 아직 없습니다.")
+        st.info("북마크나 오답 기록이 없습니다.")
+        st.stop()
+    elif st.session_state.current_q_id not in active_q_list:
         st.session_state.current_q_id = active_q_list[0]
         st.session_state.submitted = False
         st.session_state.selected_options = []
 
-# 사이드바 현황
+# 사이드바 학습 현황
 st.sidebar.divider()
-st.sidebar.subheader("📊 운영 진단 현황" if work_mode else "📊 학습 현황")
+st.sidebar.subheader("📊 진단 현황" if work_mode else "📊 학습 현황")
 total_tried = len(st.session_state.history)
-correct_cnt = sum(1 for v in st.session_state.history.values() if v["is_correct"])
+correct_cnt = sum(1 for h in st.session_state.history.values() if h["is_correct"])
 acc_rate = (correct_cnt / total_tried * 100) if total_tried > 0 else 0.0
 
-st.sidebar.metric("진단 처리 항목 수" if work_mode else "풀어본 문제 수", f"{total_tried} / {len(questions)}")
-st.sidebar.metric("자동화 정상 처리율" if work_mode else "정답률", f"{acc_rate:.1f}%", delta=f"{correct_cnt}개 정상" if work_mode else f"{correct_cnt}개 정답")
+st.sidebar.metric("진단 처리 항목" if work_mode else "풀어본 문제 수", f"{total_tried} / {len(questions)}")
+st.sidebar.metric("정상 처리율" if work_mode else "정답률", f"{acc_rate:.1f}%", delta=f"{correct_cnt}개 정답")
 
 if st.sidebar.button("🔄 진단 이력 초기화" if work_mode else "🔄 학습 기록 초기화"):
     if st.session_state.get("user_id", ""):
@@ -594,7 +628,9 @@ if st.sidebar.button("🔄 진단 이력 초기화" if work_mode else "🔄 학�
     st.session_state.submitted = False
     st.rerun()
 
-# 현재 문제 데이터
+# =========================================
+# 현재 문제 카드 구성
+# =========================================
 q_data = q_dict[st.session_state.current_q_id]
 q_id = q_data["id"]
 q_text = q_data["question"]
@@ -602,11 +638,9 @@ options = q_data["options"]
 correct_ans = q_data["answer"]
 is_multi = len(correct_ans) > 1
 
-# 카테고리 표시
 q_cats = classify_question(q_data)
 st.caption("🏷️ **RPA 프로세스 분류:** " if work_mode else "🏷️ **분류 카테고리:** " + ", ".join([f"`{c}`" for c in q_cats]))
 
-# 액션바
 ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 1.5, 1])
 curr_idx = active_q_list.index(q_id) if q_id in active_q_list else 0
 
@@ -615,7 +649,7 @@ with ctrl_col1:
 
 with ctrl_col2:
     mem_mode = st.toggle(
-        "💡 핵심 워크플로우 하이라이트" if work_mode else "💡 암기 모드 (키워드 강조)",
+        "💡 암기 모드 (키워드 강조)",
         value=st.session_state.get("memory_mode", False),
         key="memory_mode_toggle"
     )
@@ -623,7 +657,7 @@ with ctrl_col2:
 
 with ctrl_col3:
     is_bookmarked = q_id in st.session_state.bookmarks
-    bm_label = BTN_BOOKMARK_REMOVE if is_bookmarked else BTN_BOOKMARK_ADD
+    bm_label = "📌 북마크 해제" if is_bookmarked else "📌 북마크 추가"
     if st.button(bm_label, use_container_width=True):
         if is_bookmarked:
             st.session_state.bookmarks.remove(q_id)
@@ -633,34 +667,113 @@ with ctrl_col3:
             db_save_bookmark(st.session_state.get("user_id", ""), q_id, True)
         st.rerun()
 
-# 카드 양식
+# 카드 출력
 is_mem_on = st.session_state.get("memory_mode", False)
 display_q_text = q_data.get("question_highlighted", q_text) if is_mem_on else q_text
 curr_options = q_data.get("options_highlighted", options) if is_mem_on else options
 
+TICKET_TITLE = f"트랜잭션 ID: #RPA-TRX-{q_id} | (주)한진 RPA 프로세스 점검" if work_mode else f"QUESTION NO: #{q_id}"
 multi_label = f"(복수 선택 - {len(correct_ans)}개 선택)" if is_multi else "(단일 선택)"
+
 st.markdown(f"""
-<div style="background-color: #F8F9FA; border: 1px solid #D5D9D9; border-left: 6px solid #0073BB; border-radius: 8px; padding: 32px; margin-bottom: 24px;">
-    <div style="color: #16191F; font-size: 1.25rem; font-weight: 700; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #E9EBED;">
-        {TICKET_PREFIX}{q_id}{TICKET_SUFFIX} <span style="font-size: 0.9rem; font-weight: 500; color: #545B64; margin-left: 8px;">{multi_label}</span>
+<div style="background-color: #F8F9FA; border: 1px solid #E0E0E0; border-radius: 8px; padding: 24px; margin-bottom: 20px;">
+    <div style="font-size: 1.15rem; font-weight: 700; color: #232F3E; margin-bottom: 12px; border-bottom: 2px solid #0073BB; padding-bottom: 8px;">
+        {TICKET_TITLE} <span style="font-size: 0.9rem; font-weight: 500; color: #545B64; margin-left: 8px;">{multi_label}</span>
     </div>
-    <div style="color: #232F3E; font-size: 1.08rem; line-height: 1.8; font-weight: 400; word-break: keep-all;">{display_q_text}</div>
+    <div style="font-size: 1.02rem; line-height: 1.7; color: #16191F;">{display_q_text}</div>
 </div>
 """, unsafe_allow_html=True)
 
-# 보기 선택 영역
-st.markdown(f"##### {SELECT_HEADER}")
+# =========================================
+# ✏️ 문제 / 정답 / 해설 즉시 편집 (수정 모드)
+# =========================================
+with st.expander("✏️ 문제 / 정답 / 해설 즉시 편집 (수정 모드)" if not work_mode else "✏️ 트랜잭션 점검 기준 / 가이드 즉시 편집", expanded=False):
+    st.info("💡 잘못된 정답이나 해설을 직접 고치고 저장할 수 있습니다. 저장 시 내장 DB 및 JSON 데이터셋에 즉시 반영됩니다.")
+    
+    edit_q = st.text_area("질문 지문 수정:", value=q_data["question"], height=120, key=f"edit_q_{q_id}")
+    
+    st.markdown("##### 보기 항목 수정:")
+    edit_opts = {}
+    for k_opt, v_opt in q_data["options"].items():
+        edit_opts[k_opt] = st.text_area(f"보기 {k_opt} 수정:", value=v_opt, height=70, key=f"edit_opt_{q_id}_{k_opt}")
+        
+    all_keys = list(q_data["options"].keys())
+    edit_ans = st.multiselect(
+        "정답 선택 (복수 선택 가능):",
+        options=all_keys,
+        default=[a for a in q_data["answer"] if a in all_keys],
+        key=f"edit_ans_{q_id}"
+    )
+    
+    edit_exp = st.text_area("해설 내용 수정:", value=q_data["explanation"], height=160, key=f"edit_exp_{q_id}")
+    
+    btn_col1, btn_col2 = st.columns([1, 1])
+    with btn_col1:
+        if st.button("💾 변경사항 저장", type="primary", use_container_width=True, key=f"save_edit_btn_{q_id}"):
+            if not edit_ans:
+                st.warning("최소 1개 이상의 정답을 선택하셔야 합니다.")
+            else:
+                # 1. 데이터 업데이트
+                q_data["question"] = edit_q
+                q_data["options"] = edit_opts
+                q_data["answer"] = sorted(edit_ans)
+                q_data["explanation"] = edit_exp
+                
+                # 2. 하이라이트 재생성
+                q_hl, opts_hl = auto_generate_highlights(edit_q, edit_opts, sorted(edit_ans))
+                q_data["question_highlighted"] = q_hl
+                q_data["options_highlighted"] = opts_hl
+                
+                # 3. DB에 커스텀 편집 저장
+                db_save_custom_edit(q_id, edit_q, edit_opts, sorted(edit_ans), edit_exp)
+                
+                # 4. JSON 파일로 저장 (v4)
+                try:
+                    target_json_path = "dop-c02-questions-v4.json"
+                    with open(target_json_path, "w", encoding="utf-8") as f_out:
+                        json.dump(questions, f_out, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
+                    
+                st.success(f"✅ #{q_id}번 문제/정답/해설이 성공적으로 수정 및 저장되었습니다!")
+                st.rerun()
+                
+    with btn_col2:
+        if st.button("🔄 이 문제 편집 내용 초기화 (원본 복원)", use_container_width=True, key=f"reset_edit_btn_{q_id}"):
+            db_delete_custom_edit(q_id)
+            st.success(f"#{q_id}번 문제가 원본으로 복원되었습니다.")
+            st.rerun()
 
+    # 수정본 전체 JSON 다운로드 버튼
+    st.divider()
+    st.download_button(
+        label="📥 수정된 전체 JSON 데이터셋 다운로드 (dop-c02-questions-v4.json)",
+        data=json.dumps(questions, ensure_ascii=False, indent=2),
+        file_name="dop-c02-questions-v4.json",
+        mime="application/json",
+        use_container_width=True
+    )
+
+# =========================================
+# 보기 선택 및 제출 처리
+# =========================================
+SELECT_HEADER = "📋 워크플로우 예외 조치 가이드 선택" if work_mode else "📋 가장 적절한 답안을 선택하십시오"
+BTN_PREV = "◀ 이전 항목" if work_mode else "◀ 이전 문제"
+BTN_NEXT = "다음 항목 ▶" if work_mode else "다음 문제 ▶"
+BTN_SUBMIT = "▶ 예외 분석 및 모니터링 검증" if work_mode else "▶ 답안 제출 및 해설 확인"
+GUIDE_HEADER = "💡 표준 원인 분석 및 조치 가이드라인" if work_mode else "💡 정답 도출 공식 및 해설 가이드"
+
+st.markdown(f"##### {SELECT_HEADER}")
 user_selections = []
 
 if is_multi:
     st.caption(f"💡 조치 항목 {len(correct_ans)}개를 복수 선택하세요." if work_mode else f"💡 정답이 {len(correct_ans)}개인 복수 선택 문제입니다.")
-    for key, val in curr_options.items():
-        checked = st.checkbox(f"**{key}.** {val}", key=f"q_{q_id}_opt_{key}")
+    for key_opt, val_opt in curr_options.items():
+        checked = st.checkbox(f"**{key_opt}.** {val_opt}", key=f"q_{q_id}_opt_{key_opt}")
         if checked:
-            user_selections.append(key)
+            user_selections.append(key_opt)
 else:
-    radio_opts = [f"{key}. {val}" for key, val in curr_options.items()]
+    radio_opts = [f"{key_opt}. {val_opt}" for key_opt, val_opt in curr_options.items()]
     selected_radio = st.radio(
         "적절한 조치 가이드를 선택하십시오:" if work_mode else "가장 적절한 답안을 선택하십시오:",
         options=radio_opts,
@@ -707,7 +820,9 @@ if submit_btn:
             db_save_attempt(st.session_state.user_id, q_id, sorted(user_selections), is_correct)
         st.rerun()
 
+# =========================================
 # 채점 결과 및 해설
+# =========================================
 if st.session_state.submitted or (q_id in st.session_state.history):
     history_data = st.session_state.history.get(q_id, {
         "user_ans": st.session_state.selected_options,
@@ -739,11 +854,14 @@ if st.session_state.submitted or (q_id in st.session_state.history):
     with st.expander(GUIDE_HEADER, expanded=True):
         st.markdown(f"**{'표준 조치 코드' if work_mode else '정답'}:** `{correct_ans_str}`")
         display_exp = re.sub(r'</?(b|strong|span)[^>]*>', '', q_data['explanation'])
-        st.markdown(f"**{'원인 분석 및 조치 가이드라인' if work_mode else '해설'}:**\n{display_exp}")
+        exp_title = "원인 분석 및 조치 가이드라인" if work_mode else "해설"
+        st.markdown(f"**{exp_title}:**\n{display_exp}")
 
 st.divider()
 
-# 유사 트랜잭션 추천
+# =========================================
+# 유사 트랜잭션 / 문제 추천
+# =========================================
 st.markdown("##### 💡 이 항목과 원인/조치 패턴이 유사한 프로세스" if work_mode else "##### 💡 이 문제와 핵심 아키텍처가 유사한 문제")
 
 sim_q_list = get_similar_questions(q_id, top_k=3)

@@ -418,13 +418,14 @@ input_user_id = st.sidebar.text_input(
     value=st.session_state.get("user_id", ""),
     placeholder="예: hanjin_dev_01"
 )
+
 if input_user_id != st.session_state.get("user_id", ""):
     st.session_state.user_id = input_user_id
     if input_user_id:
         h, b = db_load_user_data(input_user_id)
         st.session_state.history = h
         st.session_state.bookmarks = b
-        st.sidebar.success(f"'{input_user_id}' 동기화 완료!")
+        st.toast(f"'{input_user_id}' 동기화 완료!", icon="✅")  # rerun과 무관하게 표시됨
     st.rerun()
 
 st.sidebar.divider()

@@ -413,21 +413,32 @@ st.session_state.work_mode = work_mode
 
 st.sidebar.divider()
 st.sidebar.markdown("### 🔄 PC-모바일 실시간 동기화")
-input_user_id = st.sidebar.text_input(
-    "사용자 식별 ID 입력:",
-    value=st.session_state.get("user_id", ""),
-    placeholder="예: hanjin_dev_01"
-)
+# 초기값 보장 (text_input에 key와 value를 같이 쓰면 경고가 뜨므로 미리 초기화)
+if "user_id" not in st.session_state:
+    st.session_state.user_id = ""
 
-if input_user_id != st.session_state.get("user_id", ""):
-    st.session_state.user_id = input_user_id
-    if input_user_id:
-        h, b = db_load_user_data(input_user_id)
+def on_user_id_change():
+    uid = st.session_state.user_id.strip()
+    if uid:
+        h, b = db_load_user_data(uid)
         st.session_state.history = h
         st.session_state.bookmarks = b
-        # 바로 그리지 않고 session_state에 메시지를 임시 저장
-        st.session_state.sync_msg = f"'{input_user_id}' 동기화 완료!"
-    st.rerun()
+        st.session_state.sync_msg = f"'{uid}' 동기화 완료!"
+    else:
+        st.session_state.sync_msg = ""
+
+# 1. key를 고정하고 on_change 연결 (st.rerun() 불필요)
+st.sidebar.text_input(
+    "사용자 식별 ID 입력:",
+    key="user_id",
+    placeholder="예: hanjin_dev_01",
+    on_change=on_user_id_change,
+)
+
+# 2. st.empty()로 메시지 자리를 고정해 레이아웃 밀림 방지
+msg_slot = st.sidebar.empty()
+if st.session_state.get("sync_msg"):
+    msg_slot.success(st.session_state.sync_msg)
 
 # rerun 후 아래 코드에서 메시지 출력 (pop을 사용하면 다음 화면 조작 시 자연스럽게 사라짐)
 if "sync_msg" in st.session_state:

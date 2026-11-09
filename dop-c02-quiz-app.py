@@ -50,6 +50,24 @@ def init_db():
             updated_at TIMESTAMP
         )
     """)
+    try:
+        c.execute("PRAGMA table_info(custom_edits)")
+        cols = [r[1] for r in c.fetchall()]
+        needed = {
+            "question": "TEXT",
+            "options_json": "TEXT",
+            "answer_json": "TEXT",
+            "explanation": "TEXT",
+            "updated_at": "TIMESTAMP"
+        }
+        for col_name, col_type in needed.items():
+            if col_name not in cols:
+                try:
+                    c.execute(f"ALTER TABLE custom_edits ADD COLUMN {col_name} {col_type}")
+                except Exception:
+                    pass
+    except Exception:
+        pass
     conn.commit()
     conn.close()
 
@@ -138,22 +156,29 @@ def db_save_custom_edit(q_id, question, options_dict, answer_list, explanation):
     conn.close()
 
 def db_load_custom_edits():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('SELECT q_id, question, options_json, answer_json, explanation FROM custom_edits')
-    rows = c.fetchall()
-    conn.close()
-    
-    edits = {}
-    for row in rows:
-        qid, q_text, opts_json, ans_json, exp_text = row
-        edits[qid] = {
-            "question": q_text,
-            "options": json.loads(opts_json),
-            "answer": json.loads(ans_json),
-            "explanation": exp_text
-        }
-    return edits
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('SELECT q_id, question, options_json, answer_json, explanation FROM custom_edits')
+        rows = c.fetchall()
+        conn.close()
+        
+        edits = {}
+        for row in rows:
+            qid, q_text, opts_json, ans_json, exp_text = row
+            edits[qid] = {
+                "question": q_text,
+                "options": json.loads(opts_json) if opts_json else {},
+                "answer": json.loads(ans_json) if ans_json else [],
+                "explanation": exp_text
+            }
+        return edits
+    except Exception:
+        try:
+            init_db()
+        except Exception:
+            pass
+        return {}
 
 def db_reset_custom_edit(q_id):
     conn = sqlite3.connect(DB_PATH)
@@ -169,13 +194,13 @@ def load_questions():
     possible_paths = [
         "dop-c02-questions.txt",
         "/workspace/knowledge/dop-c02-questions.txt",
-        "dop-c02-questions-v5.json",
-        "dop-c02-questions-v4.json",
+        "dop-c02-questions-v6.json",
+        "dop-c02-questions-v6.json",
         "dop-c02-questions-v3.json",
         "dop-c02-questions-v2.json",
         "dop-c02-questions-v1.json",
         "dop-c02-questions.json",
-        "/workspace/artifacts/dop-c02-questions-v5.json",
+        "/workspace/artifacts/dop-c02-questions-v6.json",
         "/workspace/artifacts/dop-c02-questions.json"
     ]
     json_path = None

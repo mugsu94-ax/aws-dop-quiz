@@ -440,10 +440,6 @@ msg_slot = st.sidebar.empty()
 if st.session_state.get("sync_msg"):
     msg_slot.success(st.session_state.sync_msg)
 
-# rerun 후 아래 코드에서 메시지 출력 (pop을 사용하면 다음 화면 조작 시 자연스럽게 사라짐)
-if "sync_msg" in st.session_state:
-    st.sidebar.success(st.session_state.pop("sync_msg"))
-
 st.sidebar.divider()
 st.sidebar.title("⚙️ 업무 점검 메뉴" if work_mode else "⚙️ 시험 및 분석 메뉴")
 

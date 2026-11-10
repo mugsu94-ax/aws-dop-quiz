@@ -37,7 +37,13 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
-    /* 3. 라디오/체크박스 선택 동그라미/네모 버튼 아이콘 크기도 약간 확대 */
+    /* 3. 핀포인트 키워드 하이라이트 토글(st.toggle) 글자 크기 축소 */
+    div[data-testid="stToggle"] label p {
+        font-size: 0.85rem !important;  /* 기본 크기(~1rem)보다 작게 축소 */
+        color: #555555 !important;      /* 필요 시 차분한 색상으로 조정 */
+    }
+
+    /* 4. 라디오/체크박스 선택 동그라미/네모 버튼 아이콘 크기도 약간 확대 */
     div[role="radiogroup"] label div:first-child,
     div[data-testid="stCheckbox"] label div:first-child {
         transform: scale(1.15);
@@ -684,7 +690,7 @@ with ctrl_col1:
 
 with ctrl_col2:
     mem_mode = st.toggle(
-        "💡 핀포인트 키워드 하이라이트",
+        "  # 핀포인트 키워드 하이라이트",
         value=st.session_state.get("memory_mode", False),
         key="memory_mode_toggle"
     )

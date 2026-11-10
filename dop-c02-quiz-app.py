@@ -64,6 +64,29 @@ st.markdown("""
     div[data-testid="stCheckbox"] label div:first-child {
         transform: scale(1.15);
     }
+
+    /* =====================================
+    토글 글자 크기 강제 적용
+    ===================================== */
+    
+    /* Streamlit 토글 텍스트 */
+    div[data-testid="stToggle"] label p,
+    div[data-testid="stToggle"] label div,
+    div[data-testid="stToggle"] label span,
+    div[data-testid="stToggle"] [data-testid="stMarkdownContainer"] p {
+        font-size: 11px !important;
+        line-height: 1.2 !important;
+        font-weight: 400 !important;
+    }
+    
+    /* 토글 스위치와 텍스트 간격 */
+    div[data-testid="stToggle"] label {
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+        flex-wrap: nowrap !important;
+    }
+    
 </style>
 """, unsafe_allow_html=True)
 

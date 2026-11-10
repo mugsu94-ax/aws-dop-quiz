@@ -55,7 +55,7 @@ st.markdown("""
     
     /* 토글 설명 글자 */
     div[data-testid="stToggle"] label p {
-        font-size: 0.75rem !important;
+        font-size: 0.55rem !important;
         line-height: 1.3 !important;
         white-space: nowrap !important;
         margin: 0 !important;

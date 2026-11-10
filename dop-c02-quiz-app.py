@@ -25,14 +25,14 @@ st.markdown("""
 <style>
     /* 1. 단일 선택 라디오(Radio) 보기 글자 크기 */
     div[role="radiogroup"] label p {
-        font-size: 1.5rem !important;  /* 크기를 더 키우려면 1.35rem 등으로 변경 */
+        font-size: 1.3rem !important;  /* 크기를 더 키우려면 1.35rem 등으로 변경 */
         line-height: 1.6 !important;
         font-weight: 500 !important;
     }
 
     /* 2. 복수 선택 체크박스(Checkbox) 보기 글자 크기 */
     div[data-testid="stCheckbox"] label p {
-        font-size: 1.5rem !important;
+        font-size: 1.3rem !important;
         line-height: 1.6 !important;
         font-weight: 500 !important;
     }

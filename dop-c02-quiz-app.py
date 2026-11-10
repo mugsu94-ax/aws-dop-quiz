@@ -37,19 +37,22 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
-    /* 3. 핀포인트 키워드 하이라이트 토글(st.toggle) 글자 크기 및 겹침 방지 */
-    div[data-testid="stToggle"] label {
-        display: flex !important;
-        align-items: center !important;
-        gap: 10px !important;              /* 스위치와 텍스트 사이 간격 확보 */
+    /* 3. 토글 스위치 겹침 방지 */
+    div[data-testid="stToggle"] {
         width: 100% !important;
     }
-
-    div[data-testid="stToggle"] label p {
-        font-size: 0.55rem !important;      /* 가독성 좋은 크기로 유지 */
-        color: #555555 !important;
+    div[data-testid="stToggle"] > label {
+        display: flex !important;
+        flex-direction: row-reverse !important; /* 스위치를 왼쪽, 글씨를 오른쪽(또는 반대)으로 강제 정렬 */
+        justify-content: flex-end !important;
+        align-items: center !important;
+        gap: 12px !important;                   /* 강제 여백 확보 */
+    }
+    div[data-testid="stToggle"] p {
+        font-size: 0.82rem !important;          /* 글자 크기 */
+        white-space: nowrap !important;         /* 줄바꿈으로 겹치는 현상 차단 */
         margin: 0 !important;
-        white-space: nowrap !important;     /* 글자가 스위치 밑으로 말려들어가는 현상 방지 */
+        padding-left: 8px !important;
     }
 
     /* 4. 라디오/체크박스 선택 동그라미/네모 버튼 아이콘 크기도 약간 확대 */

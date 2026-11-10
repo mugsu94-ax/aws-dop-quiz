@@ -37,26 +37,23 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
-    /* 3. 토글 스위치 겹침 방지 및 글자 크기 조정 */
-    
-    /* 토글 전체 영역 */
+    /* 3. 토글 스위치 및 글자 정렬 */
     div[data-testid="stToggle"] {
         width: 100% !important;
     }
     
-    /* 토글 라벨 정렬 */
     div[data-testid="stToggle"] > label {
         display: flex !important;
         flex-direction: row !important;
         justify-content: flex-start !important;
         align-items: center !important;
-        gap: 8px !important;
+        gap: 6px !important;
+        width: 100% !important;
     }
     
-    /* 토글 설명 글자 */
     div[data-testid="stToggle"] label p {
-        font-size: 0.55rem !important;
-        line-height: 1.3 !important;
+        font-size: 0.68rem !important;
+        line-height: 1.2 !important;
         white-space: nowrap !important;
         margin: 0 !important;
         padding: 0 !important;
@@ -701,7 +698,7 @@ q_cats = classify_question(q_data)
 st.caption("🏷️ **" + ("RPA 프로세스 분류:" if work_mode else "분류 카테고리:") + "** " + ", ".join([f"`{c}`" for c in q_cats]))
 
 # 컨트롤 액션바
-ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 1.5, 1])
+ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 2, 1])
 curr_idx = active_q_list.index(q_id) if q_id in active_q_list else 0
 
 with ctrl_col1:
@@ -709,7 +706,7 @@ with ctrl_col1:
 
 with ctrl_col2:
     mem_mode = st.toggle(
-        "핀포인트 키워드",
+        "키워드 하이라이트",
         value=st.session_state.get("memory_mode", False),
         key="memory_mode_toggle",
         help="문제의 핵심 키워드를 강조 표시합니다."

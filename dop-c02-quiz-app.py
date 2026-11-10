@@ -423,19 +423,35 @@ st.session_state.work_mode = work_mode
 
 st.sidebar.divider()
 st.sidebar.markdown("### 🔄 PC-모바일 실시간 동기화")
-input_user_id = st.sidebar.text_input(
-    "사용자 식별 ID 입력:",
-    value=st.session_state.get("user_id", ""),
-    placeholder="예: hanjin_dev_01"
-)
-if input_user_id != st.session_state.get("user_id", ""):
-    st.session_state.user_id = input_user_id
-    if input_user_id:
-        h, b = db_load_user_data(input_user_id)
+# 사용자 ID와 완료 메시지 초기화
+if "user_id" not in st.session_state:
+    st.session_state.user_id = ""
+
+if "sync_msg" not in st.session_state:
+    st.session_state.sync_msg = ""
+
+# 입력이 확정되면 동기화
+def on_user_id_change():
+    uid = st.session_state.user_id.strip()
+
+    if uid:
+        h, b = db_load_user_data(uid)
         st.session_state.history = h
         st.session_state.bookmarks = b
-        st.sidebar.success(f"'{input_user_id}' 동기화 완료!")
-    st.rerun()
+        st.session_state.sync_msg = f"'{uid}' 동기화 완료!"
+    else:
+        st.session_state.sync_msg = ""
+
+st.sidebar.text_input(
+    "사용자 식별 ID 입력:",
+    key="user_id",
+    placeholder="예: hanjin_dev_01",
+    on_change=on_user_id_change,
+)
+
+# 재실행될 때도 저장된 메시지를 표시
+if st.session_state.sync_msg:
+    st.sidebar.success(st.session_state.sync_msg)
 
 st.sidebar.divider()
 st.sidebar.title("⚙️ 업무 점검 메뉴" if work_mode else "⚙️ 시험 및 분석 메뉴")

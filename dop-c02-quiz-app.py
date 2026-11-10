@@ -21,75 +21,6 @@ SECONDARY_COLOR = "#232F3E"
 ACCENT_COLOR = "#FF9900"
 BG_CARD_COLOR = "#F8F9FA"
 
-st.markdown("""
-<style>
-    /* 1. 단일 선택 라디오(Radio) 보기 글자 크기 */
-    div[role="radiogroup"] label p {
-        font-size: 1.15rem !important;  /* 크기를 더 키우려면 1.35rem 등으로 변경 */
-        line-height: 1.6 !important;
-        font-weight: 500 !important;
-    }
-
-    /* 2. 복수 선택 체크박스(Checkbox) 보기 글자 크기 */
-    div[data-testid="stCheckbox"] label p {
-        font-size: 1.15rem !important;
-        line-height: 1.6 !important;
-        font-weight: 500 !important;
-    }
-
-    /* 3. 토글 스위치 및 글자 정렬 */
-    div[data-testid="stToggle"] {
-        width: 100% !important;
-    }
-    
-    div[data-testid="stToggle"] > label {
-        display: flex !important;
-        flex-direction: row !important;
-        justify-content: flex-start !important;
-        align-items: center !important;
-        gap: 6px !important;
-        width: 100% !important;
-    }
-    
-    div[data-testid="stToggle"] label p {
-        font-size: 0.68rem !important;
-        line-height: 1.2 !important;
-        white-space: nowrap !important;
-        margin: 0 !important;
-        padding: 0 !important;
-    }
-
-    /* 4. 라디오/체크박스 선택 동그라미/네모 버튼 아이콘 크기도 약간 확대 */
-    div[role="radiogroup"] label div:first-child,
-    div[data-testid="stCheckbox"] label div:first-child {
-        transform: scale(1.15);
-    }
-
-    /* =====================================
-    토글 글자 크기 강제 적용
-    ===================================== */
-    
-    /* Streamlit 토글 텍스트 */
-    div[data-testid="stToggle"] label p,
-    div[data-testid="stToggle"] label div,
-    div[data-testid="stToggle"] label span,
-    div[data-testid="stToggle"] [data-testid="stMarkdownContainer"] p {
-        font-size: 11px !important;
-        line-height: 1.2 !important;
-        font-weight: 400 !important;
-    }
-    
-    /* 토글 스위치와 텍스트 간격 */
-    div[data-testid="stToggle"] label {
-        display: flex !important;
-        align-items: center !important;
-        gap: 8px !important;
-        flex-wrap: nowrap !important;
-    }
-    
-</style>
-""", unsafe_allow_html=True)
-
 # =========================================
 # 1. 데이터베이스 동기화 함수 (SQLite)
 # =========================================
@@ -482,32 +413,19 @@ st.session_state.work_mode = work_mode
 
 st.sidebar.divider()
 st.sidebar.markdown("### 🔄 PC-모바일 실시간 동기화")
-# 초기값 보장 (text_input에 key와 value를 같이 쓰면 경고가 뜨므로 미리 초기화)
-if "user_id" not in st.session_state:
-    st.session_state.user_id = ""
-
-def on_user_id_change():
-    uid = st.session_state.user_id.strip()
-    if uid:
-        h, b = db_load_user_data(uid)
+input_user_id = st.sidebar.text_input(
+    "사용자 식별 ID 입력:",
+    value=st.session_state.get("user_id", ""),
+    placeholder="예: hanjin_dev_01"
+)
+if input_user_id != st.session_state.get("user_id", ""):
+    st.session_state.user_id = input_user_id
+    if input_user_id:
+        h, b = db_load_user_data(input_user_id)
         st.session_state.history = h
         st.session_state.bookmarks = b
-        st.session_state.sync_msg = f"'{uid}' 동기화 완료!"
-    else:
-        st.session_state.sync_msg = ""
-
-# 1. key를 고정하고 on_change 연결 (st.rerun() 불필요)
-st.sidebar.text_input(
-    "사용자 식별 ID 입력:",
-    key="user_id",
-    placeholder="예: hanjin_dev_01",
-    on_change=on_user_id_change,
-)
-
-# 2. st.empty()로 메시지 자리를 고정해 레이아웃 밀림 방지
-msg_slot = st.sidebar.empty()
-if st.session_state.get("sync_msg"):
-    msg_slot.success(st.session_state.sync_msg)
+        st.sidebar.success(f"'{input_user_id}' 동기화 완료!")
+    st.rerun()
 
 st.sidebar.divider()
 st.sidebar.title("⚙️ 업무 점검 메뉴" if work_mode else "⚙️ 시험 및 분석 메뉴")
@@ -721,7 +639,7 @@ q_cats = classify_question(q_data)
 st.caption("🏷️ **" + ("RPA 프로세스 분류:" if work_mode else "분류 카테고리:") + "** " + ", ".join([f"`{c}`" for c in q_cats]))
 
 # 컨트롤 액션바
-ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 2, 1])
+ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 1.5, 1])
 curr_idx = active_q_list.index(q_id) if q_id in active_q_list else 0
 
 with ctrl_col1:
@@ -729,10 +647,9 @@ with ctrl_col1:
 
 with ctrl_col2:
     mem_mode = st.toggle(
-        "키워드 하이라이트",
+        "💡 핀포인트 키워드 하이라이트",
         value=st.session_state.get("memory_mode", False),
-        key="memory_mode_toggle",
-        help="문제의 핵심 키워드를 강조 표시합니다."
+        key="memory_mode_toggle"
     )
     st.session_state.memory_mode = mem_mode
 
@@ -759,11 +676,12 @@ st.markdown(f"""
     <div style="font-size: 1.15rem; font-weight: 700; color: #232F3E; margin-bottom: 12px; padding-bottom: 4px;">
         {TICKET_PREFIX}{q_id} <span style="font-size: 0.9rem; font-weight: 500; color: #545B64; margin-left: 8px;">{multi_label}</span>
     </div>
-    <div style="font-size: 1.15rem; line-height: 1.7; color: #16191F;">{display_q_text}</div>
+    <div style="font-size: 1.02rem; line-height: 1.7; color: #16191F;">{display_q_text}</div>
 </div>
 """, unsafe_allow_html=True)
 
 # 보기 선택 영역
+st.markdown(f"##### {SELECT_HEADER}")
 
 user_selections = []
 

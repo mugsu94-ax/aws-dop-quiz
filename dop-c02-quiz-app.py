@@ -708,12 +708,12 @@ with ctrl_col1:
     st.caption(f"**{'진단 진행 상황' if work_mode else '진행 상황'}:** {curr_idx + 1} / {len(active_q_list)} 번 (전체 DB ID: #{q_id})")
 
 with ctrl_col2:
-mem_mode = st.toggle(
-    "핀포인트 키워드",
-    value=st.session_state.get("memory_mode", False),
-    key="memory_mode_toggle",
-    help="문제의 핵심 키워드를 강조 표시합니다."
-)
+    mem_mode = st.toggle(
+        "핀포인트 키워드",
+        value=st.session_state.get("memory_mode", False),
+        key="memory_mode_toggle",
+        help="문제의 핵심 키워드를 강조 표시합니다."
+    )
     st.session_state.memory_mode = mem_mode
 
 with ctrl_col3:

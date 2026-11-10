@@ -21,6 +21,16 @@ SECONDARY_COLOR = "#232F3E"
 ACCENT_COLOR = "#FF9900"
 BG_CARD_COLOR = "#F8F9FA"
 
+# 문제 선택지에만 글자 크기 적용
+st.markdown("""
+<style>
+    .st-key-answer_choices [role="radiogroup"] label p,
+    .st-key-answer_choices [data-testid="stCheckbox"] label p {
+        font-size: 1.15rem !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # =========================================
 # 1. 데이터베이스 동기화 함수 (SQLite)
 # =========================================
@@ -685,22 +695,23 @@ st.markdown(f"##### {SELECT_HEADER}")
 
 user_selections = []
 
-if is_multi:
-    st.caption(f"💡 조치 항목 {len(correct_ans)}개를 복수 선택하세요." if work_mode else f"💡 정답이 {len(correct_ans)}개인 복수 선택 문제입니다.")
-    for key, val in curr_options.items():
-        checked = st.checkbox(f"**{key}.** {val}", key=f"q_{q_id}_opt_{key}")
-        if checked:
-            user_selections.append(key)
-else:
-    radio_opts = [f"{key}. {val}" for key, val in curr_options.items()]
-    selected_radio = st.radio(
-        "적절한 조치 가이드를 선택하십시오:" if work_mode else "가장 적절한 답안을 선택하십시오:",
-        options=radio_opts,
-        index=None,
-        key=f"q_{q_id}_radio"
-    )
-    if selected_radio:
-        user_selections = [selected_radio[0]]
+with st.container(key="answer_choices"):
+    if is_multi:
+        st.caption(f"💡 조치 항목 {len(correct_ans)}개를 복수 선택하세요." if work_mode else f"💡 정답이 {len(correct_ans)}개인 복수 선택 문제입니다.")
+        for key, val in curr_options.items():
+            checked = st.checkbox(f"**{key}.** {val}", key=f"q_{q_id}_opt_{key}")
+            if checked:
+                user_selections.append(key)
+    else:
+        radio_opts = [f"{key}. {val}" for key, val in curr_options.items()]
+        selected_radio = st.radio(
+            "적절한 조치 가이드를 선택하십시오:" if work_mode else "가장 적절한 답안을 선택하십시오:",
+            options=radio_opts,
+            index=None,
+            key=f"q_{q_id}_radio"
+        )
+        if selected_radio:
+            user_selections = [selected_radio[0]]
 
 st.write("")
 

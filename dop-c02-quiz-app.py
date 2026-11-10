@@ -37,10 +37,19 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
-    /* 3. 핀포인트 키워드 하이라이트 토글(st.toggle) 글자 크기 축소 */
+    /* 3. 핀포인트 키워드 하이라이트 토글(st.toggle) 글자 크기 및 겹침 방지 */
+    div[data-testid="stToggle"] label {
+        display: flex !important;
+        align-items: center !important;
+        gap: 10px !important;              /* 스위치와 텍스트 사이 간격 확보 */
+        width: 100% !important;
+    }
+
     div[data-testid="stToggle"] label p {
-        font-size: 0.55rem !important;  /* 기본 크기(~1rem)보다 작게 축소 */
-        color: #555555 !important;      /* 필요 시 차분한 색상으로 조정 */
+        font-size: 0.85rem !important;      /* 가독성 좋은 크기로 유지 */
+        color: #555555 !important;
+        margin: 0 !important;
+        white-space: nowrap !important;     /* 글자가 스위치 밑으로 말려들어가는 현상 방지 */
     }
 
     /* 4. 라디오/체크박스 선택 동그라미/네모 버튼 아이콘 크기도 약간 확대 */

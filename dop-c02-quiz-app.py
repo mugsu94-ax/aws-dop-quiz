@@ -37,22 +37,29 @@ st.markdown("""
         font-weight: 500 !important;
     }
 
-    /* 3. 토글 스위치 겹침 방지 */
+    /* 3. 토글 스위치 겹침 방지 및 글자 크기 조정 */
+    
+    /* 토글 전체 영역 */
     div[data-testid="stToggle"] {
         width: 100% !important;
     }
+    
+    /* 토글 라벨 정렬 */
     div[data-testid="stToggle"] > label {
         display: flex !important;
-        flex-direction: row-reverse !important; /* 스위치를 왼쪽, 글씨를 오른쪽(또는 반대)으로 강제 정렬 */
-        justify-content: flex-end !important;
+        flex-direction: row !important;
+        justify-content: flex-start !important;
         align-items: center !important;
-        gap: 12px !important;                   /* 강제 여백 확보 */
+        gap: 8px !important;
     }
-    div[data-testid="stToggle"] p {
-        font-size: 0.82rem !important;          /* 글자 크기 */
-        white-space: nowrap !important;         /* 줄바꿈으로 겹치는 현상 차단 */
+    
+    /* 토글 설명 글자 */
+    div[data-testid="stToggle"] label p {
+        font-size: 0.75rem !important;
+        line-height: 1.3 !important;
+        white-space: nowrap !important;
         margin: 0 !important;
-        padding-left: 8px !important;
+        padding: 0 !important;
     }
 
     /* 4. 라디오/체크박스 선택 동그라미/네모 버튼 아이콘 크기도 약간 확대 */

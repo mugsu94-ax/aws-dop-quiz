@@ -686,7 +686,7 @@ st.markdown(f"""
     <div style="font-size: 1.15rem; font-weight: 700; color: #232F3E; margin-bottom: 12px; padding-bottom: 4px;">
         {TICKET_PREFIX}{q_id} <span style="font-size: 0.9rem; font-weight: 500; color: #545B64; margin-left: 8px;">{multi_label}</span>
     </div>
-    <div style="font-size: 1.02rem; line-height: 1.7; color: #16191F;">{display_q_text}</div>
+    <div style="font-size: 1.12rem; line-height: 1.7; color: #16191F;">{display_q_text}</div>
 </div>
 """, unsafe_allow_html=True)
 

@@ -39,7 +39,7 @@ st.markdown("""
 
     /* 3. 핀포인트 키워드 하이라이트 토글(st.toggle) 글자 크기 축소 */
     div[data-testid="stToggle"] label p {
-        font-size: 0.85rem !important;  /* 기본 크기(~1rem)보다 작게 축소 */
+        font-size: 0.55rem !important;  /* 기본 크기(~1rem)보다 작게 축소 */
         color: #555555 !important;      /* 필요 시 차분한 색상으로 조정 */
     }
 

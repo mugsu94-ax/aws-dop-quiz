@@ -21,6 +21,30 @@ SECONDARY_COLOR = "#232F3E"
 ACCENT_COLOR = "#FF9900"
 BG_CARD_COLOR = "#F8F9FA"
 
+st.markdown("""
+<style>
+    /* 1. 단일 선택 라디오(Radio) 보기 글자 크기 */
+    div[role="radiogroup"] label p {
+        font-size: 1.5rem !important;  /* 크기를 더 키우려면 1.35rem 등으로 변경 */
+        line-height: 1.6 !important;
+        font-weight: 500 !important;
+    }
+
+    /* 2. 복수 선택 체크박스(Checkbox) 보기 글자 크기 */
+    div[data-testid="stCheckbox"] label p {
+        font-size: 1.5rem !important;
+        line-height: 1.6 !important;
+        font-weight: 500 !important;
+    }
+
+    /* 3. 라디오/체크박스 선택 동그라미/네모 버튼 아이콘 크기도 약간 확대 */
+    div[role="radiogroup"] label div:first-child,
+    div[data-testid="stCheckbox"] label div:first-child {
+        transform: scale(1.15);
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # =========================================
 # 1. 데이터베이스 동기화 함수 (SQLite)
 # =========================================

@@ -46,7 +46,7 @@ st.markdown("""
     }
 
     div[data-testid="stToggle"] label p {
-        font-size: 0.85rem !important;      /* 가독성 좋은 크기로 유지 */
+        font-size: 0.55rem !important;      /* 가독성 좋은 크기로 유지 */
         color: #555555 !important;
         margin: 0 !important;
         white-space: nowrap !important;     /* 글자가 스위치 밑으로 말려들어가는 현상 방지 */

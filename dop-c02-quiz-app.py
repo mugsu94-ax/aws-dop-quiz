@@ -21,6 +21,21 @@ SECONDARY_COLOR = "#232F3E"
 ACCENT_COLOR = "#FF9900"
 BG_CARD_COLOR = "#F8F9FA"
 
+# 글자 크기 (rem)
+QUESTION_FONT_SIZE = "1.12rem"
+CHOICE_FONT_SIZE = "1.15rem"
+
+st.markdown(f"""
+<style>
+    .st-key-answer_choices [role="radiogroup"] label p,
+    .st-key-answer_choices [role="radiogroup"] [role="radio"] p,
+    .st-key-answer_choices [data-testid="stCheckbox"] label p,
+    .st-key-answer_choices [data-testid="stCheckbox"] [data-testid="stWidgetLabel"] p {{
+        font-size: {CHOICE_FONT_SIZE} !important;
+    }}
+</style>
+""", unsafe_allow_html=True)
+
 # =========================================
 # 1. 데이터베이스 동기화 함수 (SQLite)
 # =========================================
@@ -716,7 +731,7 @@ st.markdown(f"""
     <div style="font-size: 1.15rem; font-weight: 700; color: #232F3E; margin-bottom: 12px; padding-bottom: 4px;">
         {TICKET_PREFIX}{q_id} <span style="font-size: 0.9rem; font-weight: 500; color: #545B64; margin-left: 8px;">{multi_label}</span>
     </div>
-    <div style="font-size: 1.12rem; line-height: 1.75; color: #16191F; word-break: keep-all;">{display_q_text}</div>
+    <div style="font-size: {QUESTION_FONT_SIZE}; line-height: 1.75; color: #16191F; word-break: keep-all;">{display_q_text}</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -727,29 +742,30 @@ user_selections = []
 is_already_solved = (q_id in st.session_state.history)
 saved_ans = st.session_state.history.get(q_id, {}).get("user_ans", [])
 
-if is_multi:
-    st.caption(f"💡 조치 항목 {len(correct_ans)}개를 복수 선택하세요." if work_mode else f"💡 정답이 {len(correct_ans)}개인 복수 선택 문제입니다.")
-    for key, val in curr_options.items():
-        is_checked_default = (key in saved_ans) if (is_already_solved and saved_ans) else False
-        checked = st.checkbox(f"**{key}.** {val}", value=is_checked_default, key=f"q_{q_id}_opt_{key}")
-        if checked:
-            user_selections.append(key)
-else:
-    radio_opts = [f"{key}. {val}" for key, val in curr_options.items()]
-    default_idx = None
-    if is_already_solved and saved_ans:
-        for idx, key in enumerate(curr_options.keys()):
-            if key in saved_ans:
-                default_idx = idx
-                break
-    selected_radio = st.radio(
-        "적절한 조치 가이드를 선택하십시오:" if work_mode else "가장 적절한 답안을 선택하십시오:",
-        options=radio_opts,
-        index=default_idx,
-        key=f"q_{q_id}_radio"
-    )
-    if selected_radio:
-        user_selections = [selected_radio[0]]
+with st.container(key="answer_choices"):
+    if is_multi:
+        st.caption(f"💡 조치 항목 {len(correct_ans)}개를 복수 선택하세요." if work_mode else f"💡 정답이 {len(correct_ans)}개인 복수 선택 문제입니다.")
+        for key, val in curr_options.items():
+            is_checked_default = (key in saved_ans) if (is_already_solved and saved_ans) else False
+            checked = st.checkbox(f"**{key}.** {val}", value=is_checked_default, key=f"q_{q_id}_opt_{key}")
+            if checked:
+                user_selections.append(key)
+    else:
+        radio_opts = [f"{key}. {val}" for key, val in curr_options.items()]
+        default_idx = None
+        if is_already_solved and saved_ans:
+            for idx, key in enumerate(curr_options.keys()):
+                if key in saved_ans:
+                    default_idx = idx
+                    break
+        selected_radio = st.radio(
+            "적절한 조치 가이드를 선택하십시오:" if work_mode else "가장 적절한 답안을 선택하십시오:",
+            options=radio_opts,
+            index=default_idx,
+            key=f"q_{q_id}_radio"
+        )
+        if selected_radio:
+            user_selections = [selected_radio[0]]
 
 st.write("")
 

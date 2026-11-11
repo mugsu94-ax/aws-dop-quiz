@@ -21,20 +21,18 @@ SECONDARY_COLOR = "#232F3E"
 ACCENT_COLOR = "#FF9900"
 BG_CARD_COLOR = "#F8F9FA"
 
-# 문제 선택지에만 글자 크기 적용
-st.markdown("""
-<style>
-    .st-key-answer_choices [role="radiogroup"] label p,
-    .st-key-answer_choices [data-testid="stCheckbox"] label p {
-        font-size: 1.15rem !important;
-    }
-</style>
-""", unsafe_allow_html=True)
-
 # =========================================
 # 1. 데이터베이스 동기화 함수 (SQLite)
 # =========================================
-DB_PATH = "dop_c02_user_progress.db"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "dop_c02_user_progress.db")
+DEFAULT_USER_ID = "default_user"
+
+def get_effective_user_id(uid=None):
+    if uid is not None and str(uid).strip():
+        return str(uid).strip()
+    sess_uid = st.session_state.get("user_id", "").strip() if "user_id" in st.session_state else ""
+    return sess_uid if sess_uid else DEFAULT_USER_ID
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -61,6 +59,20 @@ def init_db():
         )
     """)
     try:
+        c.execute("PRAGMA table_info(user_progress)")
+        up_cols = [r[1] for r in c.fetchall()]
+        if "is_bookmarked" not in up_cols:
+            c.execute("ALTER TABLE user_progress ADD COLUMN is_bookmarked INTEGER DEFAULT 0")
+        if "user_ans" not in up_cols:
+            c.execute("ALTER TABLE user_progress ADD COLUMN user_ans TEXT DEFAULT '[]'")
+        if "is_correct" not in up_cols:
+            c.execute("ALTER TABLE user_progress ADD COLUMN is_correct INTEGER DEFAULT 0")
+        if "updated_at" not in up_cols:
+            c.execute("ALTER TABLE user_progress ADD COLUMN updated_at TIMESTAMP")
+    except Exception:
+        pass
+
+    try:
         c.execute("PRAGMA table_info(custom_edits)")
         cols = [r[1] for r in c.fetchall()]
         needed = {
@@ -84,8 +96,7 @@ def init_db():
 init_db()
 
 def db_save_attempt(user_id, q_id, user_ans, is_correct):
-    if not user_id:
-        return
+    uid = get_effective_user_id(user_id)
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     uans_json = json.dumps(user_ans)
@@ -97,13 +108,12 @@ def db_save_attempt(user_id, q_id, user_ans, is_correct):
             user_ans=excluded.user_ans,
             is_correct=excluded.is_correct,
             updated_at=excluded.updated_at
-    """, (user_id, q_id, uans_json, 1 if is_correct else 0, now))
+    """, (uid, q_id, uans_json, 1 if is_correct else 0, now))
     conn.commit()
     conn.close()
 
 def db_save_bookmark(user_id, q_id, is_bookmarked):
-    if not user_id:
-        return
+    uid = get_effective_user_id(user_id)
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     now = datetime.now().isoformat()
@@ -113,16 +123,15 @@ def db_save_bookmark(user_id, q_id, is_bookmarked):
         ON CONFLICT(user_id, q_id) DO UPDATE SET
             is_bookmarked=excluded.is_bookmarked,
             updated_at=excluded.updated_at
-    """, (user_id, q_id, 1 if is_bookmarked else 0, now))
+    """, (uid, q_id, 1 if is_bookmarked else 0, now))
     conn.commit()
     conn.close()
 
 def db_load_user_data(user_id):
-    if not user_id:
-        return {}, set()
+    uid = get_effective_user_id(user_id)
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute('SELECT q_id, user_ans, is_correct, is_bookmarked FROM user_progress WHERE user_id=?', (user_id,))
+    c.execute('SELECT q_id, user_ans, is_correct, is_bookmarked FROM user_progress WHERE user_id=?', (uid,))
     rows = c.fetchall()
     conn.close()
     
@@ -131,20 +140,22 @@ def db_load_user_data(user_id):
     for row in rows:
         qid, uans_json, is_corr, is_bm = row
         if uans_json and uans_json != '[]':
-            history[qid] = {
-                "user_ans": json.loads(uans_json),
-                "is_correct": bool(is_corr)
-            }
+            try:
+                history[qid] = {
+                    "user_ans": json.loads(uans_json),
+                    "is_correct": bool(is_corr)
+                }
+            except Exception:
+                pass
         if is_bm:
             bookmarks.add(qid)
     return history, bookmarks
 
 def db_delete_user_data(user_id):
-    if not user_id:
-        return
+    uid = get_effective_user_id(user_id)
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute('DELETE FROM user_progress WHERE user_id=?', (user_id,))
+    c.execute('DELETE FROM user_progress WHERE user_id=?', (uid,))
     conn.commit()
     conn.close()
 
@@ -204,13 +215,13 @@ def load_questions():
     possible_paths = [
         "dop-c02-questions.txt",
         "/workspace/knowledge/dop-c02-questions.txt",
-        "dop-c02-questions-v6.json",
-        "dop-c02-questions-v6.json",
+        "dop-c02-questions-v7.json",
+        "dop-c02-questions-v7.json",
         "dop-c02-questions-v3.json",
         "dop-c02-questions-v2.json",
         "dop-c02-questions-v1.json",
         "dop-c02-questions.json",
-        "/workspace/artifacts/dop-c02-questions-v6.json",
+        "/workspace/artifacts/dop-c02-questions-v7.json",
         "/workspace/artifacts/dop-c02-questions.json"
     ]
     json_path = None
@@ -399,16 +410,24 @@ def get_similar_questions(target_q_id, top_k=3):
 # =========================================
 # 6. 세션 상태 초기화 & 사이드바
 # =========================================
+query_params = st.query_params
+url_user_id = query_params.get("user_id", "").strip()
+
+if "user_id" not in st.session_state:
+    st.session_state.user_id = url_user_id
+
+active_uid = get_effective_user_id()
+if "history" not in st.session_state or "bookmarks" not in st.session_state:
+    init_hist, init_bm = db_load_user_data(active_uid)
+    st.session_state.history = init_hist
+    st.session_state.bookmarks = init_bm
+
 if "current_q_id" not in st.session_state:
     st.session_state.current_q_id = all_q_ids[0]
 if "submitted" not in st.session_state:
     st.session_state.submitted = False
 if "selected_options" not in st.session_state:
     st.session_state.selected_options = []
-if "history" not in st.session_state:
-    st.session_state.history = {}
-if "bookmarks" not in st.session_state:
-    st.session_state.bookmarks = set()
 if "memory_mode" not in st.session_state:
     st.session_state.memory_mode = False
 
@@ -423,35 +442,31 @@ st.session_state.work_mode = work_mode
 
 st.sidebar.divider()
 st.sidebar.markdown("### 🔄 PC-모바일 실시간 동기화")
-# 사용자 ID와 완료 메시지 초기화
-if "user_id" not in st.session_state:
-    st.session_state.user_id = ""
-
-if "sync_msg" not in st.session_state:
-    st.session_state.sync_msg = ""
-
-# 입력이 확정되면 동기화
-def on_user_id_change():
-    uid = st.session_state.user_id.strip()
-
-    if uid:
-        h, b = db_load_user_data(uid)
-        st.session_state.history = h
-        st.session_state.bookmarks = b
-        st.session_state.sync_msg = f"'{uid}' 동기화 완료!"
-    else:
-        st.session_state.sync_msg = ""
-
-st.sidebar.text_input(
+current_input_val = st.session_state.get("user_id", "")
+input_user_id = st.sidebar.text_input(
     "사용자 식별 ID 입력:",
-    key="user_id",
-    placeholder="예: hanjin_dev_01",
-    on_change=on_user_id_change,
+    value=current_input_val,
+    placeholder="예: hanjin_dev_01"
 )
+if input_user_id.strip() != current_input_val:
+    new_id = input_user_id.strip()
+    st.session_state.user_id = new_id
+    if new_id:
+        st.query_params["user_id"] = new_id
+    else:
+        if "user_id" in st.query_params:
+            del st.query_params["user_id"]
+    h, b = db_load_user_data(new_id)
+    st.session_state.history = h
+    st.session_state.bookmarks = b
+    st.rerun()
 
-# 재실행될 때도 저장된 메시지를 표시
-if st.session_state.sync_msg:
-    st.sidebar.success(st.session_state.sync_msg)
+if st.session_state.get("user_id", "").strip():
+    sync_uid = st.session_state.user_id.strip()
+    st.sidebar.success(f"🟢 동기화 프로필: **{sync_uid}**")
+    st.sidebar.caption(f"💡 모바일/다른 브라우저 주소창에 `?user_id={sync_uid}` 를 붙이거나 동일한 ID를 입력하면 실시간 동기화됩니다.")
+else:
+    st.sidebar.info("💡 기본 로컬 프로필로 자동 저장 중입니다. (기기 간 연동 시 고유 ID 입력)")
 
 st.sidebar.divider()
 st.sidebar.title("⚙️ 업무 점검 메뉴" if work_mode else "⚙️ 시험 및 분석 메뉴")
@@ -646,8 +661,7 @@ st.sidebar.metric("진단 항목 수" if work_mode else "풀어본 문제 수", 
 st.sidebar.metric("정상 처리율" if work_mode else "정답률", f"{acc_rate:.1f}%", delta=f"{correct_cnt}개 정상" if work_mode else f"{correct_cnt}개 정답")
 
 if st.sidebar.button("🔄 진단 이력 초기화" if work_mode else "🔄 학습 기록 초기화"):
-    if st.session_state.get("user_id", ""):
-        db_delete_user_data(st.session_state.user_id)
+    db_delete_user_data(get_effective_user_id())
     st.session_state.history = {}
     st.session_state.bookmarks = set()
     st.session_state.submitted = False
@@ -685,10 +699,10 @@ with ctrl_col3:
     if st.button(bm_label, use_container_width=True):
         if is_bookmarked:
             st.session_state.bookmarks.remove(q_id)
-            db_save_bookmark(st.session_state.get("user_id", ""), q_id, False)
+            db_save_bookmark(get_effective_user_id(), q_id, False)
         else:
             st.session_state.bookmarks.add(q_id)
-            db_save_bookmark(st.session_state.get("user_id", ""), q_id, True)
+            db_save_bookmark(get_effective_user_id(), q_id, True)
         st.rerun()
 
 # 카드 양식 (파란선 완전히 제거: border-bottom 없음!)
@@ -702,7 +716,7 @@ st.markdown(f"""
     <div style="font-size: 1.15rem; font-weight: 700; color: #232F3E; margin-bottom: 12px; padding-bottom: 4px;">
         {TICKET_PREFIX}{q_id} <span style="font-size: 0.9rem; font-weight: 500; color: #545B64; margin-left: 8px;">{multi_label}</span>
     </div>
-    <div style="font-size: 1.12rem; line-height: 1.7; color: #16191F;">{display_q_text}</div>
+    <div style="font-size: 1.12rem; line-height: 1.75; color: #16191F; word-break: keep-all;">{display_q_text}</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -710,24 +724,32 @@ st.markdown(f"""
 st.markdown(f"##### {SELECT_HEADER}")
 
 user_selections = []
+is_already_solved = (q_id in st.session_state.history)
+saved_ans = st.session_state.history.get(q_id, {}).get("user_ans", [])
 
-with st.container(key="answer_choices"):
-    if is_multi:
-        st.caption(f"💡 조치 항목 {len(correct_ans)}개를 복수 선택하세요." if work_mode else f"💡 정답이 {len(correct_ans)}개인 복수 선택 문제입니다.")
-        for key, val in curr_options.items():
-            checked = st.checkbox(f"**{key}.** {val}", key=f"q_{q_id}_opt_{key}")
-            if checked:
-                user_selections.append(key)
-    else:
-        radio_opts = [f"{key}. {val}" for key, val in curr_options.items()]
-        selected_radio = st.radio(
-            "적절한 조치 가이드를 선택하십시오:" if work_mode else "가장 적절한 답안을 선택하십시오:",
-            options=radio_opts,
-            index=None,
-            key=f"q_{q_id}_radio"
-        )
-        if selected_radio:
-            user_selections = [selected_radio[0]]
+if is_multi:
+    st.caption(f"💡 조치 항목 {len(correct_ans)}개를 복수 선택하세요." if work_mode else f"💡 정답이 {len(correct_ans)}개인 복수 선택 문제입니다.")
+    for key, val in curr_options.items():
+        is_checked_default = (key in saved_ans) if (is_already_solved and saved_ans) else False
+        checked = st.checkbox(f"**{key}.** {val}", value=is_checked_default, key=f"q_{q_id}_opt_{key}")
+        if checked:
+            user_selections.append(key)
+else:
+    radio_opts = [f"{key}. {val}" for key, val in curr_options.items()]
+    default_idx = None
+    if is_already_solved and saved_ans:
+        for idx, key in enumerate(curr_options.keys()):
+            if key in saved_ans:
+                default_idx = idx
+                break
+    selected_radio = st.radio(
+        "적절한 조치 가이드를 선택하십시오:" if work_mode else "가장 적절한 답안을 선택하십시오:",
+        options=radio_opts,
+        index=default_idx,
+        key=f"q_{q_id}_radio"
+    )
+    if selected_radio:
+        user_selections = [selected_radio[0]]
 
 st.write("")
 
@@ -762,8 +784,7 @@ if submit_btn:
             "user_ans": sorted(user_selections),
             "is_correct": is_correct
         }
-        if st.session_state.get("user_id", ""):
-            db_save_attempt(st.session_state.user_id, q_id, sorted(user_selections), is_correct)
+        db_save_attempt(get_effective_user_id(), q_id, sorted(user_selections), is_correct)
         st.rerun()
 
 # 채점 결과 및 해설

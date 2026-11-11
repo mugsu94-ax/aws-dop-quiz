@@ -23,7 +23,7 @@ BG_CARD_COLOR = "#F8F9FA"
 
 # 글자 크기 (rem)
 QUESTION_FONT_SIZE = "1.15rem"
-CHOICE_FONT_SIZE = "1.14rem"
+CHOICE_FONT_SIZE = "1.12rem"
 
 st.markdown(f"""
 <style>

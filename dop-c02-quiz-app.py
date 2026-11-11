@@ -22,7 +22,7 @@ ACCENT_COLOR = "#FF9900"
 BG_CARD_COLOR = "#F8F9FA"
 
 # 글자 크기 (rem)
-QUESTION_FONT_SIZE = "1.15rem"
+QUESTION_FONT_SIZE = "1.12rem"
 CHOICE_FONT_SIZE = "1.12rem"
 
 st.markdown(f"""
@@ -731,7 +731,7 @@ st.markdown(f"""
     <div style="font-size: 1.15rem; font-weight: 700; color: #232F3E; margin-bottom: 12px; padding-bottom: 4px;">
         {TICKET_PREFIX}{q_id} <span style="font-size: 0.9rem; font-weight: 500; color: #545B64; margin-left: 8px;">{multi_label}</span>
     </div>
-    <div style="font-size: {CHOICE_FONT_SIZE}; line-height: 1.75; color: #16191F; word-break: keep-all;">{display_q_text}</div>
+    <div style="font-size: {}; line-height: 1.75; color: #16191F; word-break: keep-all;">{display_q_text}</div>
 </div>
 """, unsafe_allow_html=True)
 

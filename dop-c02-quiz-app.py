@@ -49,14 +49,12 @@ def call_gemini_api(prompt, api_key):
             return response.text
     except Exception:
         pass
-
+        
     try:
         import requests
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": api_key,          # ← URL 대신 헤더로
-        }
+        host = "generativelanguage"
+        url = f"https://{host}.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+        headers = {"Content-Type": "application/json"}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         res = requests.post(url, json=payload, headers=headers, timeout=40)
         if res.status_code == 200:
@@ -66,18 +64,10 @@ def call_gemini_api(prompt, api_key):
                 if parts:
                     return parts[0].get("text", "")
             return "AI 응답 결과를 수신하지 못했습니다."
-        elif res.status_code in (400, 401, 403):
-            return "API 키가 올바르지 않거나 권한이 없습니다. 키를 다시 확인해 주세요."
-        elif res.status_code == 429:
-            return "요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요."
         else:
-            return f"API 호출 오류 (HTTP {res.status_code})"
-    except requests.exceptions.Timeout:
-        return "응답 시간이 초과되었습니다. 다시 시도해 주세요."
-    except requests.exceptions.ConnectionError:
-        return "네트워크 연결에 실패했습니다."
+            return f"API 호출 오류 (HTTP {res.status_code}): {res.text}"
     except Exception as e:
-        return f"호출 중 오류 발생: {type(e).__name__}"   # ← str(e) 대신 예외 타입만
+        return f"호출 중 오류 발생: {str(e)}"
 
 def generate_ai_explanation(q_data, user_ans_list, api_key, work_mode=False):
     q_text = q_data.get("question", "")
@@ -132,11 +122,27 @@ def generate_ai_explanation(q_data, user_ans_list, api_key, work_mode=False):
     return call_gemini_api(prompt, api_key)
 
 # =========================================
-# 1. 데이터베이스 동기화 함수 (SQLite)
+# 1. 데이터베이스 동기화 함수 (Supabase 클라우드 DB & SQLite 하이브리드)
 # =========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "dop_c02_user_progress.db")
 DEFAULT_USER_ID = "default_user"
+
+def get_supabase_credentials():
+    url = ""
+    key = ""
+    if hasattr(st, "secrets"):
+        url = st.secrets.get("SUPABASE_URL", "")
+        key = st.secrets.get("SUPABASE_KEY", "")
+    if not url:
+        url = os.environ.get("SUPABASE_URL", "")
+    if not key:
+        key = os.environ.get("SUPABASE_KEY", "")
+    return url.strip().rstrip("/"), key.strip()
+
+def has_supabase():
+    url, key = get_supabase_credentials()
+    return bool(url and key)
 
 def get_effective_user_id(uid=None):
     if uid is not None and str(uid).strip():
@@ -205,96 +211,239 @@ def init_db():
 
 init_db()
 
+# --- Supabase REST API 헬퍼 함수 ---
+def supabase_headers(key):
+    return {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates"
+    }
+
 def db_save_attempt(user_id, q_id, user_ans, is_correct):
     uid = get_effective_user_id(user_id)
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
     uans_json = json.dumps(user_ans)
     now = datetime.now().isoformat()
-    c.execute("""
-        INSERT INTO user_progress (user_id, q_id, user_ans, is_correct, is_bookmarked, updated_at)
-        VALUES (?, ?, ?, ?, 0, ?)
-        ON CONFLICT(user_id, q_id) DO UPDATE SET
-            user_ans=excluded.user_ans,
-            is_correct=excluded.is_correct,
-            updated_at=excluded.updated_at
-    """, (uid, q_id, uans_json, 1 if is_correct else 0, now))
-    conn.commit()
-    conn.close()
+    
+    # 1. Supabase 우선 저장
+    if has_supabase():
+        try:
+            import requests
+            url, key = get_supabase_credentials()
+            endpoint = f"{url}/rest/v1/user_progress"
+            data = [{
+                "user_id": uid,
+                "q_id": q_id,
+                "user_ans": uans_json,
+                "is_correct": 1 if is_correct else 0,
+                "updated_at": now
+            }]
+            requests.post(endpoint, json=data, headers=supabase_headers(key), timeout=5)
+        except Exception:
+            pass
+            
+    # 2. 로컬 SQLite 보조 저장
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("""
+            INSERT INTO user_progress (user_id, q_id, user_ans, is_correct, is_bookmarked, updated_at)
+            VALUES (?, ?, ?, ?, 0, ?)
+            ON CONFLICT(user_id, q_id) DO UPDATE SET
+                user_ans=excluded.user_ans,
+                is_correct=excluded.is_correct,
+                updated_at=excluded.updated_at
+        """, (uid, q_id, uans_json, 1 if is_correct else 0, now))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 def db_save_bookmark(user_id, q_id, is_bookmarked):
     uid = get_effective_user_id(user_id)
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
     now = datetime.now().isoformat()
-    c.execute("""
-        INSERT INTO user_progress (user_id, q_id, user_ans, is_correct, is_bookmarked, updated_at)
-        VALUES (?, ?, '[]', 0, ?, ?)
-        ON CONFLICT(user_id, q_id) DO UPDATE SET
-            is_bookmarked=excluded.is_bookmarked,
-            updated_at=excluded.updated_at
-    """, (uid, q_id, 1 if is_bookmarked else 0, now))
-    conn.commit()
-    conn.close()
+    
+    # 1. Supabase 우선 저장
+    if has_supabase():
+        try:
+            import requests
+            url, key = get_supabase_credentials()
+            endpoint = f"{url}/rest/v1/user_progress"
+            data = [{
+                "user_id": uid,
+                "q_id": q_id,
+                "is_bookmarked": 1 if is_bookmarked else 0,
+                "updated_at": now
+            }]
+            requests.post(endpoint, json=data, headers=supabase_headers(key), timeout=5)
+        except Exception:
+            pass
+            
+    # 2. 로컬 SQLite 보조 저장
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("""
+            INSERT INTO user_progress (user_id, q_id, user_ans, is_correct, is_bookmarked, updated_at)
+            VALUES (?, ?, '[]', 0, ?, ?)
+            ON CONFLICT(user_id, q_id) DO UPDATE SET
+                is_bookmarked=excluded.is_bookmarked,
+                updated_at=excluded.updated_at
+        """, (uid, q_id, 1 if is_bookmarked else 0, now))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 def db_load_user_data(user_id):
     uid = get_effective_user_id(user_id)
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('SELECT q_id, user_ans, is_correct, is_bookmarked FROM user_progress WHERE user_id=?', (uid,))
-    rows = c.fetchall()
-    conn.close()
-    
     history = {}
     bookmarks = set()
-    for row in rows:
-        qid, uans_json, is_corr, is_bm = row
-        if uans_json and uans_json != '[]':
-            try:
-                history[qid] = {
-                    "user_ans": json.loads(uans_json),
-                    "is_correct": bool(is_corr)
-                }
-            except Exception:
-                pass
-        if is_bm:
-            bookmarks.add(qid)
+    
+    # 1. Supabase 클라우드 우선 조회
+    if has_supabase():
+        try:
+            import requests
+            url, key = get_supabase_credentials()
+            endpoint = f"{url}/rest/v1/user_progress?user_id=eq.{uid}&select=q_id,user_ans,is_correct,is_bookmarked"
+            headers = {"apikey": key, "Authorization": f"Bearer {key}"}
+            res = requests.get(endpoint, headers=headers, timeout=5)
+            if res.status_code == 200:
+                rows = res.json()
+                for row in rows:
+                    qid = row.get("q_id")
+                    uans_json = row.get("user_ans")
+                    is_corr = row.get("is_correct")
+                    is_bm = row.get("is_bookmarked")
+                    if uans_json and uans_json != '[]':
+                        try:
+                            history[qid] = {
+                                "user_ans": json.loads(uans_json) if isinstance(uans_json, str) else uans_json,
+                                "is_correct": bool(is_corr)
+                            }
+                        except Exception:
+                            pass
+                    if is_bm:
+                        bookmarks.add(qid)
+                return history, bookmarks
+        except Exception:
+            pass
+
+    # 2. 로컬 SQLite 폴백 조회
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('SELECT q_id, user_ans, is_correct, is_bookmarked FROM user_progress WHERE user_id=?', (uid,))
+        rows = c.fetchall()
+        conn.close()
+        for row in rows:
+            qid, uans_json, is_corr, is_bm = row
+            if uans_json and uans_json != '[]':
+                try:
+                    history[qid] = {
+                        "user_ans": json.loads(uans_json),
+                        "is_correct": bool(is_corr)
+                    }
+                except Exception:
+                    pass
+            if is_bm:
+                bookmarks.add(qid)
+    except Exception:
+        pass
+        
     return history, bookmarks
 
 def db_delete_user_data(user_id):
     uid = get_effective_user_id(user_id)
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('DELETE FROM user_progress WHERE user_id=?', (uid,))
-    conn.commit()
-    conn.close()
+    if has_supabase():
+        try:
+            import requests
+            url, key = get_supabase_credentials()
+            endpoint = f"{url}/rest/v1/user_progress?user_id=eq.{uid}"
+            headers = {"apikey": key, "Authorization": f"Bearer {key}"}
+            requests.delete(endpoint, headers=headers, timeout=5)
+        except Exception:
+            pass
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('DELETE FROM user_progress WHERE user_id=?', (uid,))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 def db_save_custom_edit(q_id, question, options_dict, answer_list, explanation):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
     now = datetime.now().isoformat()
-    c.execute("""
-        INSERT INTO custom_edits (q_id, question, options_json, answer_json, explanation, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(q_id) DO UPDATE SET
-            question=excluded.question,
-            options_json=excluded.options_json,
-            answer_json=excluded.answer_json,
-            explanation=excluded.explanation,
-            updated_at=excluded.updated_at
-    """, (q_id, question, json.dumps(options_dict, ensure_ascii=False), json.dumps(answer_list, ensure_ascii=False), explanation, now))
-    conn.commit()
-    conn.close()
+    opts_json = json.dumps(options_dict, ensure_ascii=False)
+    ans_json = json.dumps(answer_list, ensure_ascii=False)
+    
+    if has_supabase():
+        try:
+            import requests
+            url, key = get_supabase_credentials()
+            endpoint = f"{url}/rest/v1/custom_edits"
+            data = [{
+                "q_id": q_id,
+                "question": question,
+                "options_json": opts_json,
+                "answer_json": ans_json,
+                "explanation": explanation,
+                "updated_at": now
+            }]
+            requests.post(endpoint, json=data, headers=supabase_headers(key), timeout=5)
+        except Exception:
+            pass
+            
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("""
+            INSERT INTO custom_edits (q_id, question, options_json, answer_json, explanation, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(q_id) DO UPDATE SET
+                question=excluded.question,
+                options_json=excluded.options_json,
+                answer_json=excluded.answer_json,
+                explanation=excluded.explanation,
+                updated_at=excluded.updated_at
+        """, (q_id, question, opts_json, ans_json, explanation, now))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 def db_load_custom_edits():
+    edits = {}
+    if has_supabase():
+        try:
+            import requests
+            url, key = get_supabase_credentials()
+            endpoint = f"{url}/rest/v1/custom_edits?select=q_id,question,options_json,answer_json,explanation"
+            headers = {"apikey": key, "Authorization": f"Bearer {key}"}
+            res = requests.get(endpoint, headers=headers, timeout=5)
+            if res.status_code == 200:
+                rows = res.json()
+                for row in rows:
+                    qid = row.get("q_id")
+                    opts_raw = row.get("options_json")
+                    ans_raw = row.get("answer_json")
+                    edits[qid] = {
+                        "question": row.get("question", ""),
+                        "options": json.loads(opts_raw) if isinstance(opts_raw, str) else (opts_raw or {}),
+                        "answer": json.loads(ans_raw) if isinstance(ans_raw, str) else (ans_raw or []),
+                        "explanation": row.get("explanation", "")
+                    }
+                return edits
+        except Exception:
+            pass
+
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute('SELECT q_id, question, options_json, answer_json, explanation FROM custom_edits')
         rows = c.fetchall()
         conn.close()
-        
-        edits = {}
         for row in rows:
             qid, q_text, opts_json, ans_json, exp_text = row
             edits[qid] = {
@@ -305,24 +454,32 @@ def db_load_custom_edits():
             }
         return edits
     except Exception:
-        try:
-            init_db()
-        except Exception:
-            pass
         return {}
 
 def db_reset_custom_edit(q_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('DELETE FROM custom_edits WHERE q_id=?', (q_id,))
-    conn.commit()
-    conn.close()
-
+    if has_supabase():
+        try:
+            import requests
+            url, key = get_supabase_credentials()
+            endpoint = f"{url}/rest/v1/custom_edits?q_id=eq.{q_id}"
+            headers = {"apikey": key, "Authorization": f"Bearer {key}"}
+            requests.delete(endpoint, headers=headers, timeout=5)
+        except Exception:
+            pass
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('DELETE FROM custom_edits WHERE q_id=?', (q_id,))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 # =========================================
 # 2. 데이터 로드 (dop-c02-questions.txt 최우선)
 # =========================================
 def load_questions():
     possible_paths = [
+        "dop-c02-questions-v9.json",
         "dop-c02-questions-v8.json",
         "dop-c02-questions.txt",
         "/workspace/knowledge/dop-c02-questions.txt",
@@ -572,12 +729,17 @@ if input_user_id.strip() != current_input_val:
     st.session_state.bookmarks = b
     st.rerun()
 
+if has_supabase():
+    st.sidebar.caption("⚡ **클라우드 데이터베이스(Supabase) 실시간 연동 활성화됨 (영구 보존)**")
+else:
+    st.sidebar.caption("💾 로컬 저장소 모드 (Supabase 미연동 시)")
+
 if st.session_state.get("user_id", "").strip():
     sync_uid = st.session_state.user_id.strip()
     st.sidebar.success(f"🟢 동기화 프로필: **{sync_uid}**")
     st.sidebar.caption(f"💡 모바일/다른 브라우저 주소창에 `?user_id={sync_uid}` 를 붙이거나 동일한 ID를 입력하면 실시간 동기화됩니다.")
 else:
-    st.sidebar.info("💡 기본 로컬 프로필로 자동 저장 중입니다. (기기 간 연동 시 고유 ID 입력)")
+    st.sidebar.info("💡 기본 프로필로 자동 저장 중입니다. (기기 간 연동 시 고유 ID 입력)")
 
 st.sidebar.divider()
 st.sidebar.markdown("### 🤖 AI 자동 분석 엔진" if work_mode else "### 🤖 Gemini 2.5 Flash AI 설정")

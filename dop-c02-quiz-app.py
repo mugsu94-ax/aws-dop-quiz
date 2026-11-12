@@ -155,15 +155,14 @@ def generate_ai_explanation(q_data, user_ans_list, api_key, work_mode=False):
     q_text = q_data.get("question", "")
     options = q_data.get("options", {})
     correct_ans = q_data.get("answer", [])
-    
+
     nl = chr(10)
     options_text = nl.join([f'{k}. {v}' for k, v in options.items()])
     correct_ans_str = ", ".join(correct_ans)
     user_ans_str = ", ".join(user_ans_list) if user_ans_list else "미선택"
-    
-    
+
     if work_mode:
-    prompt = f"""당신은 RPA 운영 및 장애 분석 전문가입니다.
+        prompt = f"""당신은 RPA 운영 및 장애 분석 전문가입니다.
 아래 항목을 간결하게 분석하세요.
 
 [상황 및 예외 로그]
@@ -182,23 +181,11 @@ def generate_ai_explanation(q_data, user_ans_list, api_key, work_mode=False):
 - 핵심 원인과 조치 방법만 설명합니다.
 - 정답 근거는 최대 3개로 제한합니다.
 - 오답은 각 항목당 한 문장으로 설명합니다.
-- 재발 방지 가이드는 필요한 경우에만 최대 2개 작성합니다.
-- 회사 소개, 장황한 배경 설명, 불필요한 결론은 생략합니다.
 - 전체 답변은 800자 이내로 작성합니다.
-
-[출력 형식]
-### 1. 발생 원인
-- 핵심 원인
-
-### 2. 조치 근거
-- 정답인 이유
-- 오답인 이유
-
-### 3. 핵심 조치
-- 실제 적용할 조치 요약"""
-
+- 불필요한 배경 설명과 결론은 생략합니다.
+"""
     else:
-    prompt = f"""당신은 AWS Certified DevOps Engineer - Professional (DOP-C02) 시험 전문 멘토입니다.
+        prompt = f"""당신은 AWS Certified DevOps Engineer - Professional (DOP-C02) 시험 전문 멘토입니다.
 시험 합격에 필요한 핵심 내용만 설명하세요.
 
 [문제]
@@ -214,12 +201,10 @@ def generate_ai_explanation(q_data, user_ans_list, api_key, work_mode=False):
 {user_ans_str}
 
 [답변 규칙]
-- 시험 합격에 필요한 내용만 설명합니다.
 - 정답 근거는 최대 3개로 제한합니다.
 - 오답은 각 선택지당 핵심 이유 한 문장으로 설명합니다.
-- 문제에 없는 실무 가이드나 추가 권고사항은 작성하지 않습니다.
-- 회사명, 개인 업무 환경, RPA 관련 내용은 언급하지 않습니다.
-- 서론과 결론은 생략합니다.
+- 문제에 없는 실무 가이드는 작성하지 않습니다.
+- 회사명이나 RPA 관련 내용은 언급하지 않습니다.
 - 전체 답변은 800자 이내로 작성합니다.
 
 [출력 형식]
@@ -229,10 +214,11 @@ def generate_ai_explanation(q_data, user_ans_list, api_key, work_mode=False):
 - 핵심 근거 최대 3개
 
 ### ❌ 오답인 이유
-- 나머지 선택지별 탈락 이유 한 문장
+- 선택지별 탈락 이유
 
 ### ⚡ 시험 핵심 암기
-- 문제 키워드 → AWS 서비스/기능"""
+- 문제 키워드 → AWS 서비스/기능
+"""
 
     return call_gemini_api(prompt, api_key)
 

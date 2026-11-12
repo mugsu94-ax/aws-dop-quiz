@@ -91,6 +91,17 @@ st.markdown(f"""
     color: #333333 !important;
 }}
 
+/* Markdown 제목 크기 조정 */
+[data-testid="stExpanderDetails"] [data-testid="stMarkdownContainer"] h1,
+[data-testid="stExpanderDetails"] [data-testid="stMarkdownContainer"] h2,
+[data-testid="stExpanderDetails"] [data-testid="stMarkdownContainer"] h3 {{
+    font-size: 0.95rem !important;
+    font-weight: 700 !important;
+    line-height: 1.5 !important;
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+}}
+
 [data-testid="stExpanderDetails"] .exp-heading-wrong {{
         color: #C62828 !important;
 }}

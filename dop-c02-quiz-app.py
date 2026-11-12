@@ -29,49 +29,80 @@ EXP_BODY_FONT_SIZE = "1.10rem"     # 해설지 일반 본문 글씨 크기
 
 st.markdown(f"""
 <style>
-    .st-key-answer_choices [role="radiogroup"] label p,
-    .st-key-answer_choices [role="radiogroup"] [role="radio"] p,
-    .st-key-answer_choices [data-testid="stCheckbox"] label p,
-    .st-key-answer_choices [data-testid="stCheckbox"] [data-testid="stWidgetLabel"] p {{
-        font-size: {CHOICE_FONT_SIZE} !important;
-    }}
-    
-     /* 정답해설지 제목 및 본문 글씨 크기 스타일 */
-    .exp-heading-correct {{
-        font-size: {EXP_HEADER_FONT_SIZE} !important;
-        font-weight: 800 !important;
-        color: #1B5E20 !important;
-        margin-top: 18px !important;
-        margin-bottom: 8px !important;
-    }}
-    .exp-heading-wrong {{
-        font-size: {EXP_HEADER_FONT_SIZE} !important;
-        font-weight: 800 !important;
-        color: #C62828 !important;
-        margin-top: 18px !important;
-        margin-bottom: 8px !important;
-    }}
-    .exp-heading-notice {{
-        font-size: {EXP_HEADER_FONT_SIZE} !important;
-        font-weight: 800 !important;
-        color: #D97706 !important;
-        margin-top: 18px !important;
-        margin-bottom: 8px !important;
-    }}
-    .exp-heading-memo {{
-        font-size: {EXP_HEADER_FONT_SIZE} !important;
-        font-weight: 800 !important;
-        color: #0073BB !important;
-        margin-top: 18px !important;
-        margin-bottom: 8px !important;
-    }}
-    .st-expander [data-testid="stExpanderDetails"] p,
-    .st-expander [data-testid="stExpanderDetails"] li {{
-        font-size: {EXP_BODY_FONT_SIZE} !important;
-        line-height: 1.8 !important;
-    }}
+
+/* =================================
+   선택지 (Radio / Checkbox)
+================================= */
+
+/* 라디오 버튼 */
+.st-key-answer_choices [data-testid="stRadio"] label,
+.st-key-answer_choices [role="radiogroup"] label {{
+    font-size: {CHOICE_FONT_SIZE} !important;
+}}
+
+.st-key-answer_choices [data-testid="stRadio"] label p,
+.st-key-answer_choices [role="radiogroup"] label p,
+.st-key-answer_choices [role="radio"] p {{
+    font-size: {CHOICE_FONT_SIZE} !important;
+}}
+
+/* 체크박스 */
+.st-key-answer_choices [data-testid="stCheckbox"] label,
+.st-key-answer_choices [data-testid="stCheckbox"] label p {{
+    font-size: {CHOICE_FONT_SIZE} !important;
+}}
+
+/* =================================
+   해설 제목
+================================= */
+
+.exp-heading-correct {{
+    font-size: {EXP_HEADER_FONT_SIZE} !important;
+    font-weight: 800 !important;
+    color: #1B5E20 !important;
+    margin-top: 18px !important;
+    margin-bottom: 8px !important;
+}}
+
+.exp-heading-wrong {{
+    font-size: {EXP_HEADER_FONT_SIZE} !important;
+    font-weight: 800 !important;
+    color: #C62828 !important;
+    margin-top: 18px !important;
+    margin-bottom: 8px !important;
+}}
+
+.exp-heading-notice {{
+    font-size: {EXP_HEADER_FONT_SIZE} !important;
+    font-weight: 800 !important;
+    color: #D97706 !important;
+    margin-top: 18px !important;
+    margin-bottom: 8px !important;
+}}
+
+.exp-heading-memo {{
+    font-size: {EXP_HEADER_FONT_SIZE} !important;
+    font-weight: 800 !important;
+    color: #0073BB !important;
+    margin-top: 18px !important;
+    margin-bottom: 8px !important;
+}}
+
+/* =================================
+   Expander 본문
+================================= */
+
+.st-key-answer_choices [data-testid="stExpanderDetails"] p,
+.st-key-answer_choices [data-testid="stExpanderDetails"] li,
+[data-testid="stExpanderDetails"] p,
+[data-testid="stExpanderDetails"] li {{
+    font-size: {EXP_BODY_FONT_SIZE} !important;
+    line-height: 1.8 !important;
+}}
+
 </style>
 """, unsafe_allow_html=True)
+
 
 def format_styled_explanation(raw_text):
     clean = re.sub(r'</?(b|strong|span)[^>]*>', '', raw_text)

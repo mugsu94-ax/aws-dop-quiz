@@ -49,12 +49,14 @@ def call_gemini_api(prompt, api_key):
             return response.text
     except Exception:
         pass
-        
+
     try:
         import requests
-        host = "generativelanguage"
-        url = f"https://{host}.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-        headers = {"Content-Type": "application/json"}
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,          # ← URL 대신 헤더로
+        }
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         res = requests.post(url, json=payload, headers=headers, timeout=40)
         if res.status_code == 200:
@@ -64,10 +66,18 @@ def call_gemini_api(prompt, api_key):
                 if parts:
                     return parts[0].get("text", "")
             return "AI 응답 결과를 수신하지 못했습니다."
+        elif res.status_code in (400, 401, 403):
+            return "API 키가 올바르지 않거나 권한이 없습니다. 키를 다시 확인해 주세요."
+        elif res.status_code == 429:
+            return "요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요."
         else:
-            return f"API 호출 오류 (HTTP {res.status_code}): {res.text}"
+            return f"API 호출 오류 (HTTP {res.status_code})"
+    except requests.exceptions.Timeout:
+        return "응답 시간이 초과되었습니다. 다시 시도해 주세요."
+    except requests.exceptions.ConnectionError:
+        return "네트워크 연결에 실패했습니다."
     except Exception as e:
-        return f"호출 중 오류 발생: {str(e)}"
+        return f"호출 중 오류 발생: {type(e).__name__}"   # ← str(e) 대신 예외 타입만
 
 def generate_ai_explanation(q_data, user_ans_list, api_key, work_mode=False):
     q_text = q_data.get("question", "")

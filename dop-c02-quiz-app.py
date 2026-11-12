@@ -749,14 +749,27 @@ if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
 elif "GEMINI_API_KEY" in os.environ:
     default_key = os.environ["GEMINI_API_KEY"]
 
-input_g_key = st.sidebar.text_input(
-    "AI 분석 인증 토큰 (Auth Key):" if work_mode else "Gemini API Key 입력:",
-    value=st.session_state.get("gemini_api_key", default_key),
-    type="password",
-    placeholder="AI Studio API Key 입력",
-    help="Google AI Studio에서 발급받은 Gemini API 키를 입력하면 실시간 심층 해설을 생성합니다. (gemini-2.5-flash 모델 적용)"
-)
-st.session_state.gemini_api_key = input_g_key.strip()
+# Secrets에 키가 이미 있으면 화면에 아예 노출하지 않고 자동 연동
+secrets_gemini_key = ""
+if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
+    secrets_gemini_key = st.secrets["GEMINI_API_KEY"].strip()
+elif "GEMINI_API_KEY" in os.environ:
+    secrets_gemini_key = os.environ["GEMINI_API_KEY"].strip()
+
+if secrets_gemini_key:
+    # Secrets 키가 존재하면 입력창 없이 백그라운드 자동 적용
+    st.session_state.gemini_api_key = secrets_gemini_key
+    st.sidebar.success("🟢 AI 자동 분석 엔진 연동 완료 (`gemini-2.5-flash`)" if work_mode else "🟢 Gemini 2.5 Flash 자동 연동됨")
+    st.sidebar.caption("🔒 Secrets 환경변수를 통해 보안 연동 중입니다.")
+else:
+    # Secrets에 키가 없을 때만 수동 입력창 표시
+    input_g_key = st.sidebar.text_input(
+        "AI 분석 인증 토큰 (Auth Key):" if work_mode else "Gemini API Key 입력:",
+        value=st.session_state.get("gemini_api_key", ""),
+        type="password",
+        placeholder="AI Studio API Key 직접 입력"
+    )
+    st.session_state.gemini_api_key = input_g_key.strip()
 if st.session_state.gemini_api_key:
     st.sidebar.caption("🟢 AI 분석 엔진 연동 완료 (`gemini-2.5-flash`)" if work_mode else "🟢 Gemini 2.5 Flash API 연동 완료")
 

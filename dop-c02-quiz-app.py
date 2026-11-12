@@ -131,6 +131,7 @@ def generate_ai_explanation(q_data, user_ans_list, api_key, work_mode=False):
    - 정답 코드: 채택 사유
    - 제외 항목: 부적합한 기술적 이유 요약
 3. 표준 운영 규칙: 향후 재발 방지를 위한 1:1 조치 공식
+"""
     return call_gemini_api(prompt, api_key)
 
 # =========================================

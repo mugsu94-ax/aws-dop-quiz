@@ -37,6 +37,91 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # =========================================
+# 0-1. Gemini 2.5 Flash AI 심층 해설 엔진
+# =========================================
+def call_gemini_api(prompt, api_key):
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        response = model.generate_content(prompt)
+        if response and hasattr(response, "text"):
+            return response.text
+    except Exception:
+        pass
+        
+    try:
+        import requests
+        host = "generativelanguage"
+        url = f"https://{host}.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+        headers = {"Content-Type": "application/json"}
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        res = requests.post(url, json=payload, headers=headers, timeout=40)
+        if res.status_code == 200:
+            cands = res.json().get("candidates", [])
+            if cands:
+                parts = cands[0].get("content", {}).get("parts", [])
+                if parts:
+                    return parts[0].get("text", "")
+            return "AI 응답 결과를 수신하지 못했습니다."
+        else:
+            return f"API 호출 오류 (HTTP {res.status_code}): {res.text}"
+    except Exception as e:
+        return f"호출 중 오류 발생: {str(e)}"
+
+def generate_ai_explanation(q_data, user_ans_list, api_key, work_mode=False):
+    q_text = q_data.get("question", "")
+    options = q_data.get("options", {})
+    correct_ans = q_data.get("answer", [])
+    
+    nl = chr(10)
+    options_text = nl.join([f'{k}. {v}' for k, v in options.items()])
+    correct_ans_str = ", ".join(correct_ans)
+    user_ans_str = ", ".join(user_ans_list) if user_ans_list else "미선택"
+    
+    if work_mode:
+        prompt = f"""당신은 (주)한진 RPA 프로세스 자동화 및 UiPath 워크플로우 최고 전문가입니다.
+아래 트랜잭션 점검 항목에 대해 표준 원인 분석 및 예외 조치 가이드라인을 작성해 주세요.
+
+[트랜잭션 상황 및 예외 로그]:
+{q_text}
+
+[조치 가이드 항목]:
+{options_text}
+
+[표준 조치 코드]:
+{correct_ans_str}
+
+[선택된 조치 항목]:
+{user_ans_str}
+
+[답변 요구사항]:
+1. 트랜잭션 예외 발생 원인 및 시스템 제약조건 분석
+2. 정답인 이유 및 나머지 답안이 오답인 명확한 이유 (각 조치 항목별로 왜 올바른 조치이고 왜 부적합한지 구체적 기술 근거 제시)
+3. 향후 재발 방지를 위한 표준 운영/개발 가이드라인 및 1:1 연계 키워드 공식"""
+    else:
+        prompt = f"""당신은 AWS Certified DevOps Engineer - Professional (DOP-C02) 최고 전문가입니다.
+아래 시험 문제를 깊이 있게 분석하여 수험생이 완벽히 이해할 수 있도록 명쾌한 심층 해설을 작성해 주세요.
+
+[문제]:
+{q_text}
+
+[선택지]:
+{options_text}
+
+[실제 정답]:
+{correct_ans_str}
+
+[사용자 선택]:
+{user_ans_str}
+
+[답변 요구사항]:
+1. 핵심 아키텍처 및 문제 시나리오 요구조건 분석 (어떤 기술적 제약조건/트리거가 답을 결정하는가?)
+2. 정답인 이유 및 나머지 답안이 오답인 명확한 이유 (각 선택지별로 왜 정답이고 왜 오답인지 구체적 기술 근거 제시)
+3. 시험장 직결 1:1 키워드 연계 암기 팁 (문제의 핵심 단서와 정답을 바로 연결하는 공식)"""
+    return call_gemini_api(prompt, api_key)
+
+# =========================================
 # 1. 데이터베이스 동기화 함수 (SQLite)
 # =========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -228,6 +313,7 @@ def db_reset_custom_edit(q_id):
 # =========================================
 def load_questions():
     possible_paths = [
+        "dop-c02-questions-v8.json",
         "dop-c02-questions.txt",
         "/workspace/knowledge/dop-c02-questions.txt",
         "dop-c02-questions-v7.json",
@@ -482,6 +568,25 @@ if st.session_state.get("user_id", "").strip():
     st.sidebar.caption(f"💡 모바일/다른 브라우저 주소창에 `?user_id={sync_uid}` 를 붙이거나 동일한 ID를 입력하면 실시간 동기화됩니다.")
 else:
     st.sidebar.info("💡 기본 로컬 프로필로 자동 저장 중입니다. (기기 간 연동 시 고유 ID 입력)")
+
+st.sidebar.divider()
+st.sidebar.markdown("### 🤖 AI 자동 분석 엔진" if work_mode else "### 🤖 Gemini 2.5 Flash AI 설정")
+default_key = ""
+if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
+    default_key = st.secrets["GEMINI_API_KEY"]
+elif "GEMINI_API_KEY" in os.environ:
+    default_key = os.environ["GEMINI_API_KEY"]
+
+input_g_key = st.sidebar.text_input(
+    "AI 분석 인증 토큰 (Auth Key):" if work_mode else "Gemini API Key 입력:",
+    value=st.session_state.get("gemini_api_key", default_key),
+    type="password",
+    placeholder="AI Studio API Key 입력",
+    help="Google AI Studio에서 발급받은 Gemini API 키를 입력하면 실시간 심층 해설을 생성합니다. (gemini-2.5-flash 모델 적용)"
+)
+st.session_state.gemini_api_key = input_g_key.strip()
+if st.session_state.gemini_api_key:
+    st.sidebar.caption("🟢 AI 분석 엔진 연동 완료 (`gemini-2.5-flash`)" if work_mode else "🟢 Gemini 2.5 Flash API 연동 완료")
 
 st.sidebar.divider()
 st.sidebar.title("⚙️ 업무 점검 메뉴" if work_mode else "⚙️ 시험 및 분석 메뉴")
@@ -836,6 +941,34 @@ if st.session_state.submitted or (q_id in st.session_state.history):
         st.markdown(f"**{'표준 조치 코드' if work_mode else '정답'}:** `{correct_ans_str}`")
         display_exp = re.sub(r'</?(b|strong|span)[^>]*>', '', q_data['explanation'])
         st.markdown(f"**{'원인 분석 및 조치 가이드라인' if work_mode else '해설'}:**\n{display_exp}")
+        
+        # =========================================
+        # 🤖 Gemini 2.5 Flash AI 심층 해설
+        # =========================================
+        st.markdown("---")
+        ai_col1, ai_col2 = st.columns([2.5, 1.5])
+        with ai_col1:
+            st.markdown(f"##### {'🤖 AI 프로세스 정밀 진단 분석' if work_mode else '🤖 Gemini 2.5 Flash AI 심층 해설'}")
+        with ai_col2:
+            gen_ai_btn = st.button("분석 실행 ⚡" if work_mode else "AI 심층 해설 생성 ⚡", key=f"gen_ai_{q_id}", use_container_width=True)
+            
+        ai_exp_key = f"ai_explanation_{q_id}"
+        
+        if gen_ai_btn:
+            active_key = st.session_state.get("gemini_api_key", "").strip()
+            if not active_key:
+                st.warning("⚠️ 사이드바에서 AI 분석 인증 토큰을 먼저 입력해 주십시오." if work_mode else "⚠️ 사이드바에서 Gemini API Key를 먼저 입력해 주십시오.")
+            else:
+                with st.spinner("AI가 예외 원인 및 표준 조치를 분석 중입니다..." if work_mode else "Gemini 2.5 Flash가 아키텍처 및 선택지별 오답 사유를 정밀 분석 중입니다..."):
+                    ai_res = generate_ai_explanation(q_data, history_data["user_ans"], active_key, work_mode=work_mode)
+                    st.session_state[ai_exp_key] = ai_res
+                    
+        if ai_exp_key in st.session_state:
+            st.markdown(f"""
+            <div style="background-color: #F0F7FF; border-left: 4px solid #0073BB; padding: 18px; border-radius: 6px; margin-top: 12px; font-size: 1.05rem; line-height: 1.75; color: #16191F;">
+                {st.session_state[ai_exp_key]}
+            </div>
+            """, unsafe_allow_html=True)
 
 st.divider()
 

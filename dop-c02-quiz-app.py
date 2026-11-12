@@ -604,8 +604,6 @@ def load_questions():
         if "options" in q and isinstance(q["options"], dict):
             for k in q["options"]:
                 q["options"][k] = re.sub(r'\*\*(.*?)\*\*', r'\1', q["options"][k])
-        if "explanation" in q:
-            q["explanation"] = re.sub(r'\*\*(.*?)\*\*', r'\1', q["explanation"])
             
     return data
 

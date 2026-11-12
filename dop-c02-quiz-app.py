@@ -24,7 +24,7 @@ BG_CARD_COLOR = "#F8F9FA"
 # 글자 크기 (rem)
 QUESTION_FONT_SIZE = "1.12rem"
 CHOICE_FONT_SIZE = "1.15rem"
-EXP_HEADER_FONT_SIZE = "1.22rem"   # 정답해설, 오답해설, 기술적 주의사항 글씨 크기
+EXP_HEADER_FONT_SIZE = "1.10rem"   # 정답해설, 오답해설, 기술적 주의사항 글씨 크기
 EXP_BODY_FONT_SIZE = "1.10rem"     # 해설지 일반 본문 글씨 크기
 
 st.markdown(f"""

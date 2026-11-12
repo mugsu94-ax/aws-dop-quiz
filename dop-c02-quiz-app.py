@@ -24,6 +24,8 @@ BG_CARD_COLOR = "#F8F9FA"
 # 글자 크기 (rem)
 QUESTION_FONT_SIZE = "1.12rem"
 CHOICE_FONT_SIZE = "1.15rem"
+EXP_HEADER_FONT_SIZE = "1.22rem"   # 정답해설, 오답해설, 기술적 주의사항 글씨 크기
+EXP_BODY_FONT_SIZE = "1.10rem"     # 해설지 일반 본문 글씨 크기
 
 st.markdown(f"""
 <style>
@@ -33,8 +35,51 @@ st.markdown(f"""
     .st-key-answer_choices [data-testid="stCheckbox"] [data-testid="stWidgetLabel"] p {{
         font-size: {CHOICE_FONT_SIZE} !important;
     }}
+    
+    /* 정답해설지 제목 및 본문 글씨 크기 스타일 */
+    .exp-heading-correct {{
+        font-size: {EXP_HEADER_FONT_SIZE} !important;
+        font-weight: 800 !important;
+        color: #1B5E20 !important;
+        margin-top: 18px !important;
+        margin-bottom: 8px !important;
+    }}
+    .exp-heading-wrong {{
+        font-size: {EXP_HEADER_FONT_SIZE} !important;
+        font-weight: 800 !important;
+        color: #C62828 !important;
+        margin-top: 18px !important;
+        margin-bottom: 8px !important;
+    }}
+    .exp-heading-notice {{
+        font-size: {EXP_HEADER_FONT_SIZE} !important;
+        font-weight: 800 !important;
+        color: #D97706 !important;
+        margin-top: 18px !important;
+        margin-bottom: 8px !important;
+    }}
+    .exp-heading-memo {{
+        font-size: {EXP_HEADER_FONT_SIZE} !important;
+        font-weight: 800 !important;
+        color: #0073BB !important;
+        margin-top: 18px !important;
+        margin-bottom: 8px !important;
+    }}
+    .st-expander [data-testid="stExpanderDetails"] p,
+    .st-expander [data-testid="stExpanderDetails"] li {{
+        font-size: {EXP_BODY_FONT_SIZE} !important;
+        line-height: 1.8 !important;
+    }}
 </style>
 """, unsafe_allow_html=True)
+
+def format_styled_explanation(raw_text):
+    clean = re.sub(r'</?(b|strong|span)[^>]*>', '', raw_text)
+    clean = re.sub(r'\*\*(정답\s*해설[^\*]*)\*\*', r'<div class="exp-heading-correct">🎯 \1</div>', clean)
+    clean = re.sub(r'\*\*(오답\s*해설[^\*]*)\*\*', r'<div class="exp-heading-wrong">❌ \1</div>', clean)
+    clean = re.sub(r'\*\*(\[?주의\]?|기술적\s*주의사항[^\*]*)\*\*', r'<div class="exp-heading-notice">⚠️ \1</div>', clean)
+    clean = re.sub(r'\*\*(\[?검증\s*메모\]?|\[?문제\s*해설\]?|\[?요구\s*사항\]?|핵심[^\*]*)\*\*', r'<div class="exp-heading-memo">🔍 \1</div>', clean)
+    return clean
 
 # =========================================
 # 0-1. Gemini 2.5 Flash AI 심층 해설 엔진
@@ -95,18 +140,13 @@ def generate_ai_explanation(q_data, user_ans_list, api_key, work_mode=False):
 [선택된 조치 항목]:
 {user_ans_str}
 
-[답변 작성 규칙]:
-- 서론/결론/인사말은 완전히 생략하고 바로 본문으로 시작할 것.
-- 각 항목은 1~2줄 이내의 짧은 불릿 포인트(-)로 간결하게 작성할 것
-- 문제와 선택지는 생략
-
 [답변 요구사항]:
 1. 트랜잭션 예외 발생 원인 및 시스템 제약조건 분석
 2. 정답인 이유 및 나머지 답안이 오답인 명확한 이유 (각 조치 항목별로 왜 올바른 조치이고 왜 부적합한지 구체적 기술 근거 제시)
 3. 향후 재발 방지를 위한 표준 운영/개발 가이드라인 및 1:1 연계 키워드 공식"""
     else:
-        prompt = f"""당신은 AWS Certified DevOps Engineer - Professional (DOP-C02) 최고 전문가입니다.
-아래 시험 문제를 깊이 있게 분석하여 수험생이 완벽히 이해할 수 있도록 명쾌한 심층 해설을 작성해 주세요.
+        prompt = f"""당신은 AWS Certified DevOps Engineer - Professional (DOP-C02) 수험 멘토입니다.
+아래 시험 문제에 대해 장황한 서술을 지양하고, 시험 직전 빠르게 복습할 수 있도록 **핵심만 압축 요약**하여 해설해 주세요.
 
 [문제]:
 {q_text}
@@ -122,16 +162,14 @@ def generate_ai_explanation(q_data, user_ans_list, api_key, work_mode=False):
 
 [답변 작성 규칙]:
 - 서론/결론/인사말은 완전히 생략하고 바로 본문으로 시작할 것.
-- 각 항목은 1~2줄 이내의 짧은 불릿 포인트(-)로 간결하게 작성할 것
-- 문제와 선택지는 생략
+- 각 항목은 1~2줄 이내의 짧은 불릿 포인트(-)로 간결하게 작성할 것.
 
 [답변 구성]:
-1. 예외 발생 핵심 원인 (1~2줄 요약)
-2. 항목별 적합성 판별 (각 1줄):
-   - 정답 코드: 채택 사유
-   - 제외 항목: 부적합한 기술적 이유 요약
-3. 표준 운영 규칙: 향후 재발 방지를 위한 1:1 조치 공식
-"""
+1. 🎯 핵심 요구조건 (1~2줄): 문제 시나리오에서 정답을 결정짓는 결정적 단서
+2. 💡 정답 및 오답 판별 (각 보기당 1~2줄 압축):
+   - {correct_ans_str} (정답): 요구조건을 만족하는 핵심 이유
+   - 나머지 오답 보기: 탈락한 기술적 결격 사유만 1줄로 명시 (예: 시간/비용 초과, 필수 요구조건 미달 등)
+3. ⚡ 1:1 암기 공식: [문제 핵심 키워드] ➔ [정답 서비스/기능]"""
     return call_gemini_api(prompt, api_key)
 
 # =========================================
@@ -492,6 +530,7 @@ def db_reset_custom_edit(q_id):
 # =========================================
 def load_questions():
     possible_paths = [
+        "dop-c02-questions-v10.json",
         "dop-c02-questions-v9.json",
         "dop-c02-questions-v8.json",
         "dop-c02-questions.txt",
@@ -762,29 +801,21 @@ if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
 elif "GEMINI_API_KEY" in os.environ:
     default_key = os.environ["GEMINI_API_KEY"]
 
-# Secrets에 키가 이미 있으면 화면에 아예 노출하지 않고 자동 연동
-secrets_gemini_key = ""
-if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
-    secrets_gemini_key = st.secrets["GEMINI_API_KEY"].strip()
-elif "GEMINI_API_KEY" in os.environ:
-    secrets_gemini_key = os.environ["GEMINI_API_KEY"].strip()
-
-if secrets_gemini_key:
-    # Secrets 키가 존재하면 입력창 없이 백그라운드 자동 적용
-    st.session_state.gemini_api_key = secrets_gemini_key
+if default_key:
+    st.session_state.gemini_api_key = default_key
     st.sidebar.success("🟢 AI 자동 분석 엔진 연동 완료 (`gemini-2.5-flash`)" if work_mode else "🟢 Gemini 2.5 Flash 자동 연동됨")
     st.sidebar.caption("🔒 Secrets 환경변수를 통해 보안 연동 중입니다.")
 else:
-    # Secrets에 키가 없을 때만 수동 입력창 표시
     input_g_key = st.sidebar.text_input(
         "AI 분석 인증 토큰 (Auth Key):" if work_mode else "Gemini API Key 입력:",
         value=st.session_state.get("gemini_api_key", ""),
         type="password",
-        placeholder="AI Studio API Key 직접 입력"
+        placeholder="AI Studio API Key 입력",
+        help="Google AI Studio에서 발급받은 Gemini API 키를 입력하면 실시간 심층 해설을 생성합니다. (gemini-2.5-flash 모델 적용)"
     )
     st.session_state.gemini_api_key = input_g_key.strip()
-if st.session_state.gemini_api_key:
-    st.sidebar.caption("🟢 AI 분석 엔진 연동 완료 (`gemini-2.5-flash`)" if work_mode else "🟢 Gemini 2.5 Flash API 연동 완료")
+    if st.session_state.gemini_api_key:
+        st.sidebar.caption("🟢 Gemini 2.5 Flash API 연동 완료")
 
 st.sidebar.divider()
 st.sidebar.title("⚙️ 업무 점검 메뉴" if work_mode else "⚙️ 시험 및 분석 메뉴")
@@ -1039,7 +1070,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # 보기 선택 영역
-st.markdown(f"##### {SELECT_HEADER}")
 
 user_selections = []
 is_already_solved = (q_id in st.session_state.history)
@@ -1137,8 +1167,8 @@ if st.session_state.submitted or (q_id in st.session_state.history):
     
     with st.expander(GUIDE_HEADER, expanded=True):
         st.markdown(f"**{'표준 조치 코드' if work_mode else '정답'}:** `{correct_ans_str}`")
-        display_exp = re.sub(r'</?(b|strong|span)[^>]*>', '', q_data['explanation'])
-        st.markdown(f"**{'원인 분석 및 조치 가이드라인' if work_mode else '해설'}:**\n{display_exp}")
+        display_exp = format_styled_explanation(q_data['explanation'])
+        st.markdown(f"**{'원인 분석 및 조치 가이드라인' if work_mode else '해설'}:**\n\n{display_exp}", unsafe_allow_html=True)
         
         # =========================================
         # 🤖 Gemini 2.5 Flash AI 심층 해설

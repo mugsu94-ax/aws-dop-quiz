@@ -1200,38 +1200,75 @@ if st.session_state.submitted or (q_id in st.session_state.history):
         </div>
         """, unsafe_allow_html=True)
     
-    with st.expander(GUIDE_HEADER, expanded=True):
-        st.markdown(f"**{'표준 조치 코드' if work_mode else '정답'}:** `{correct_ans_str}`")
-        display_exp = format_styled_explanation(q_data['explanation'])
-        st.markdown(f"**{'원인 분석 및 조치 가이드라인' if work_mode else '해설'}:**\n\n{display_exp}", unsafe_allow_html=True)
-        
-        # =========================================
-        # 🤖 Gemini 2.5 Flash AI 심층 해설
-        # =========================================
-        st.markdown("---")
-        ai_col1, ai_col2 = st.columns([2.5, 1.5])
-        with ai_col1:
-            st.markdown(f"##### {'🤖 AI 프로세스 정밀 진단 분석' if work_mode else '🤖 Gemini 2.5 Flash AI 심층 해설'}")
-        with ai_col2:
-            gen_ai_btn = st.button("분석 실행 ⚡" if work_mode else "AI 심층 해설 생성 ⚡", key=f"gen_ai_{q_id}", use_container_width=True)
-            
-        ai_exp_key = f"ai_explanation_{q_id}"
-        
-        if gen_ai_btn:
-            active_key = st.session_state.get("gemini_api_key", "").strip()
-            if not active_key:
-                st.warning("⚠️ 사이드바에서 AI 분석 인증 토큰을 먼저 입력해 주십시오." if work_mode else "⚠️ 사이드바에서 Gemini API Key를 먼저 입력해 주십시오.")
-            else:
-                with st.spinner("AI가 예외 원인 및 표준 조치를 분석 중입니다..." if work_mode else "Gemini 2.5 Flash가 아키텍처 및 선택지별 오답 사유를 정밀 분석 중입니다..."):
-                    ai_res = generate_ai_explanation(q_data, history_data["user_ans"], active_key, work_mode=work_mode)
-                    st.session_state[ai_exp_key] = ai_res
-                    
-        if ai_exp_key in st.session_state:
-            st.markdown(f"""
-            <div style="background-color: #F0F7FF; border-left: 4px solid #0073BB; padding: 18px; border-radius: 6px; margin-top: 12px; font-size: 1.05rem; line-height: 1.75; color: #16191F;">
-                {st.session_state[ai_exp_key]}
-            </div>
-            """, unsafe_allow_html=True)
+    
+# =========================================
+# 💡 표준 원인 분석 및 조치 가이드라인
+# =========================================
+with st.expander("💡 표준 원인 분석 및 조치 가이드라인", expanded=True):
+    st.markdown(
+        f"**{'표준 조치 코드' if work_mode else '정답'}:** `{correct_ans_str}`"
+    )
+
+    display_exp = format_styled_explanation(q_data['explanation'])
+
+    st.markdown(
+        f"**{'원인 분석 및 조치 가이드라인' if work_mode else '해설'}:**\n\n{display_exp}",
+        unsafe_allow_html=True
+    )
+
+# =========================================
+# 🤖 AI 프로세스 정밀 진단 분석
+# =========================================
+with st.expander(
+    "🤖 AI 프로세스 정밀 진단 분석" if work_mode else "🤖 Gemini 2.5 Flash AI 심층 해설",
+    expanded=False
+):
+    gen_ai_btn = st.button(
+        "분석 실행 ⚡" if work_mode else "AI 심층 해설 생성 ⚡",
+        key=f"gen_ai_{q_id}",
+        use_container_width=True
+    )
+
+    ai_exp_key = f"ai_explanation_{q_id}"
+
+    if gen_ai_btn:
+        active_key = st.session_state.get("gemini_api_key", "").strip()
+
+        if not active_key:
+            st.warning(
+                "⚠️ 사이드바에서 AI 분석 인증 토큰을 먼저 입력해 주십시오."
+                if work_mode else
+                "⚠️ 사이드바에서 Gemini API Key를 먼저 입력해 주십시오."
+            )
+        else:
+            with st.spinner(
+                "AI가 예외 원인 및 표준 조치를 분석 중입니다..."
+                if work_mode else
+                "Gemini 2.5 Flash가 아키텍처 및 선택지별 오답 사유를 정밀 분석 중입니다..."
+            ):
+                ai_res = generate_ai_explanation(
+                    q_data,
+                    history_data["user_ans"],
+                    active_key,
+                    work_mode=work_mode
+                )
+                st.session_state[ai_exp_key] = ai_res
+
+    if ai_exp_key in st.session_state:
+        st.markdown(f"""
+        <div style="
+            background-color: #F0F7FF;
+            border-left: 4px solid #0073BB;
+            padding: 18px;
+            border-radius: 6px;
+            margin-top: 12px;
+            font-size: 1.05rem;
+            line-height: 1.75;
+            color: #16191F;
+        ">
+            {st.session_state[ai_exp_key]}
+        </div>
+        """, unsafe_allow_html=True)
 
 st.divider()
 

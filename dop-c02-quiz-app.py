@@ -162,7 +162,7 @@ def generate_ai_explanation(q_data, user_ans_list, api_key, work_mode=False):
     user_ans_str = ", ".join(user_ans_list) if user_ans_list else "미선택"
     
     
-if work_mode:
+    if work_mode:
     prompt = f"""당신은 RPA 운영 및 장애 분석 전문가입니다.
 아래 항목을 간결하게 분석하세요.
 
@@ -197,8 +197,7 @@ if work_mode:
 ### 3. 핵심 조치
 - 실제 적용할 조치 요약"""
 
-    
-else:
+    else:
     prompt = f"""당신은 AWS Certified DevOps Engineer - Professional (DOP-C02) 시험 전문 멘토입니다.
 시험 합격에 필요한 핵심 내용만 설명하세요.
 

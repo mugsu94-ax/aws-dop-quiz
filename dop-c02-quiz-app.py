@@ -57,47 +57,43 @@ st.markdown(f"""
 ================================= */
 
 .exp-heading-correct,
-.exp-heading-correct * {
+.exp-heading-correct * {{
     font-size: 0.95rem !important;
     font-weight: 700 !important;
     color: #1B5E20 !important;
-}
+}}
 
 .exp-heading-wrong,
-.exp-heading-wrong * {
+.exp-heading-wrong * {{
     font-size: 0.95rem !important;
     font-weight: 700 !important;
     color: #C62828 !important;
-}
+}}
 
 .exp-heading-notice,
-.exp-heading-notice * {
+.exp-heading-notice * {{
     font-size: 0.95rem !important;
     font-weight: 700 !important;
     color: #D97706 !important;
-}
+}}
 
 .exp-heading-memo,
-.exp-heading-memo * {
+.exp-heading-memo * {{
     font-size: 0.95rem !important;
     font-weight: 700 !important;
     color: #37474F !important;
-}
-
-/* =================================
-   해설 본문
-================================= */
+}}
 
 [data-testid="stExpanderDetails"] [data-testid="stMarkdownContainer"] p,
-[data-testid="stExpanderDetails"] [data-testid="stMarkdownContainer"] li {
+[data-testid="stExpanderDetails"] [data-testid="stMarkdownContainer"] li {{
     font-size: 0.95rem !important;
     line-height: 1.7 !important;
     color: #333333 !important;
-}
+}}
 
-[data-testid="stExpanderDetails"] .exp-heading-wrong {
-    color: #C62828 !important;
-}
+[data-testid="stExpanderDetails"] .exp-heading-wrong {{
+        color: #C62828 !important;
+}}
 
 </style>
 """, unsafe_allow_html=True)

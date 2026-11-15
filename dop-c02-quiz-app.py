@@ -1256,7 +1256,7 @@ if st.session_state.submitted or (q_id in st.session_state.history):
 
 correct_ans_str = ", ".join(q_data.get("answer", []))
 
-with st.expander("💡 표준 원인 분석 및 조치 가이드라인", expanded=True):
+with st.expander("💡 표준 원인 분석 및 조치 가이드라인", expanded=false):
     st.markdown(
         f"**{'표준 조치 코드' if work_mode else '정답'}:** `{correct_ans_str}`"
     )

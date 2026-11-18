@@ -1271,13 +1271,13 @@ if st.session_state.submitted or (
 # =========================================
 # 💡 표준 원인 분석 및 조치 가이드라인
 # =========================================
-if st.session_state.submitted or (
-    q_id in st.session_state.history and not is_wrong_note
-):
+with st.expander("💡 표준 원인 분석 및 조치 가이드라인", expanded=False):
 
-    correct_ans_str = ", ".join(q_data.get("answer", []))
+    if st.session_state.submitted or (
+        q_id in st.session_state.history and not is_wrong_note
+    ):
+        correct_ans_str = ", ".join(q_data.get("answer", []))
 
-    with st.expander("💡 표준 원인 분석 및 조치 가이드라인", expanded=True):
         st.markdown(
             f"**{'표준 조치 코드' if work_mode else '정답'}:** `{correct_ans_str}`"
         )
@@ -1288,6 +1288,9 @@ if st.session_state.submitted or (
             f"**{'원인 분석 및 조치 가이드라인' if work_mode else '해설'}:**\n\n{display_exp}",
             unsafe_allow_html=True
         )
+
+    else:
+        st.info("🔒 답안 제출 후 정답과 해설을 확인할 수 있습니다.")
 
 # =========================================
 # 🤖 AI 프로세스 정밀 진단 분석

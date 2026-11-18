@@ -1107,6 +1107,10 @@ if st.sidebar.button("🔄 진단 이력 초기화" if work_mode else "🔄 학�
     st.rerun()
 
 # 현재 문제 데이터
+is_wrong_note = (
+    mode == mode_note
+    and filter_type == "❌ 틀린 문제"
+)
 q_data = q_dict[st.session_state.current_q_id]
 q_id = q_data["id"]
 q_text = q_data["question"]
@@ -1233,7 +1237,9 @@ if submit_btn:
         st.rerun()
 
 # 채점 결과 및 해설
-if st.session_state.submitted or (q_id in st.session_state.history):
+if st.session_state.submitted or (
+    q_id in st.session_state.history and not is_wrong_note
+):
     history_data = st.session_state.history.get(q_id, {
         "user_ans": st.session_state.selected_options,
         "is_correct": sorted(st.session_state.selected_options) == sorted(correct_ans)
@@ -1265,20 +1271,21 @@ if st.session_state.submitted or (q_id in st.session_state.history):
 # =========================================
 # 💡 표준 원인 분석 및 조치 가이드라인
 # =========================================
+if not is_wrong_note or st.session_state.submitted:
 
-correct_ans_str = ", ".join(q_data.get("answer", []))
+    correct_ans_str = ", ".join(q_data.get("answer", []))
 
-with st.expander("💡 표준 원인 분석 및 조치 가이드라인", expanded=False):
-    st.markdown(
-        f"**{'표준 조치 코드' if work_mode else '정답'}:** `{correct_ans_str}`"
-    )
+    with st.expander("💡 표준 원인 분석 및 조치 가이드라인", expanded=True):
+        st.markdown(
+            f"**{'표준 조치 코드' if work_mode else '정답'}:** `{correct_ans_str}`"
+        )
 
-    display_exp = format_styled_explanation(q_data['explanation'])
+        display_exp = format_styled_explanation(q_data['explanation'])
 
-    st.markdown(
-        f"**{'원인 분석 및 조치 가이드라인' if work_mode else '해설'}:**\n\n{display_exp}",
-        unsafe_allow_html=True
-    )
+        st.markdown(
+            f"**{'원인 분석 및 조치 가이드라인' if work_mode else '해설'}:**\n\n{display_exp}",
+            unsafe_allow_html=True
+        )
 
 # =========================================
 # 🤖 AI 프로세스 정밀 진단 분석

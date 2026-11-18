@@ -828,8 +828,8 @@ if "history" not in st.session_state or "bookmarks" not in st.session_state:
 
 if "current_q_id" not in st.session_state:
     st.session_state.current_q_id = all_q_ids[0]
-if "submitted" not in st.session_state:
-    st.session_state.submitted = False
+if "submitted_q_id" not in st.session_state:
+    st.session_state.submitted_q_id = None
 if "selected_options" not in st.session_state:
     st.session_state.selected_options = []
 if "memory_mode" not in st.session_state:
@@ -1202,7 +1202,12 @@ with nav_col1:
         st.rerun()
 
 with nav_col2:
-    submit_btn = st.button(BTN_SUBMIT, type="primary", use_container_width=True, disabled=st.session_state.submitted)
+    submit_btn = st.button(
+    BTN_SUBMIT,
+    type="primary",
+    use_container_width=True,
+    disabled=(st.session_state.get("submitted_q_id") == q_id)
+)
 
 with nav_col3:
     if st.button(BTN_NEXT, disabled=(curr_idx == len(active_q_list) - 1), use_container_width=True):
@@ -1216,6 +1221,7 @@ if submit_btn:
         st.warning("조치 사항 또는 답안을 먼저 선택해 주십시오.")
     else:
         st.session_state.submitted = True
+        st.session_state.submitted_q_id = q_id    
         st.session_state.selected_options = sorted(user_selections)
         is_correct = sorted(user_selections) == sorted(correct_ans)
         

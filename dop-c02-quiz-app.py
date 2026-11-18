@@ -918,6 +918,12 @@ mode = st.sidebar.radio(
     index=2
 )
 
+# 풀이 모드 변경 시 이전 문제의 제출 상태 초기화
+if st.session_state.get("_last_mode") != mode:
+    st.session_state.submitted = False
+    st.session_state.selected_options = []
+    st.session_state._last_mode = mode
+
 # 헤더 텍스트 설정
 MAIN_TITLE = "(주)한진 RPA 프로세스 자동화 운영 및 트랜잭션 진단 콘솔" if work_mode else "☁️ AWS Certified DevOps Engineer Professional (DOP-C02)"
 SUB_TITLE = "UiPath 워크플로우 예외 정밀 분석 & 프로세스 자동화 운영 모니터링 시스템" if work_mode else "최신 427개 기출 정밀 복원 & 1:1 키워드 핀포인트 암기 노트"

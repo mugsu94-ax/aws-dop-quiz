@@ -1271,24 +1271,31 @@ if submit_btn:
         db_save_attempt(get_effective_user_id(), q_id, sorted(user_selections), is_correct)
         st.rerun()
 
+
 # 채점 결과 및 해설
-if st.session_state.submitted or (
-    q_id in st.session_state.history and not is_wrong_note
-):
+show_result = (
+    st.session_state.submitted
+    or (
+        q_id in st.session_state.history
+        and not review_mode
+    )
+)
+
+if show_result:
     history_data = st.session_state.history.get(q_id, {
         "user_ans": st.session_state.selected_options,
         "is_correct": sorted(st.session_state.selected_options) == sorted(correct_ans)
     })
-    
+
     is_correct = history_data["is_correct"]
     user_ans_str = ", ".join(history_data["user_ans"])
     correct_ans_str = ", ".join(correct_ans)
-    
+
     txt_pass = '✓ 정상 검증 완료되었습니다!' if work_mode else '✓ 정답입니다!'
     txt_fail = '✗ 예외 조치 실패 (오류 발생)' if work_mode else '✗ 오답입니다.'
     txt_choice = '선택 항목' if work_mode else '선택한 답안'
     txt_guide = '표준 가이드' if work_mode else '정답'
-    
+
     if is_correct:
         st.markdown(f"""
         <div style="background-color: #F2F9F4; border: 2px solid #2E7D32; padding: 20px; border-radius: 8px; color: #1B5E20; font-weight: 700; font-size: 1.08rem; margin-top: 20px;">

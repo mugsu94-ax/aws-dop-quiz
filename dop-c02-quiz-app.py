@@ -1106,11 +1106,21 @@ if st.sidebar.button("🔄 진단 이력 초기화" if work_mode else "🔄 학�
     st.session_state.submitted = False
     st.rerun()
 
+# =========================================
 # 현재 문제 데이터
+# =========================================
 is_wrong_note = (
     mode == mode_note
     and filter_type == "❌ 틀린 문제"
 )
+
+is_bookmark_note = (
+    mode == mode_note
+    and filter_type == "📌 북마크한 문제"
+)
+
+review_mode = is_wrong_note or is_bookmark_note
+
 q_data = q_dict[st.session_state.current_q_id]
 q_id = q_data["id"]
 q_text = q_data["question"]
@@ -1118,8 +1128,33 @@ options = q_data["options"]
 correct_ans = q_data["answer"]
 is_multi = len(correct_ans) > 1
 
+# 북마크 / 오답 문제 진입 시 답안 초기화
+answer_context = (
+    mode,
+    filter_type if review_mode else "",
+    q_id
+)
+
+if st.session_state.get("_answer_context") != answer_context:
+
+    for opt_key in options.keys():
+        st.session_state.pop(f"q_{q_id}_opt_{opt_key}", None)
+
+    st.session_state.pop(f"q_{q_id}_radio", None)
+
+    st.session_state.selected_options = []
+    st.session_state.submitted = False
+
+    st.session_state["_answer_context"] = answer_context
+
 q_cats = classify_question(q_data)
-st.caption("🏷️ **" + ("RPA 프로세스 분류:" if work_mode else "분류 카테고리:") + "** " + ", ".join([f"`{c}`" for c in q_cats]))
+
+st.caption(
+    "🏷️ **" +
+    ("RPA 프로세스 분류:" if work_mode else "분류 카테고리:") +
+    "** " +
+    ", ".join([f"`{c}`" for c in q_cats])
+)
 
 # 컨트롤 액션바
 ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 1.5, 1])

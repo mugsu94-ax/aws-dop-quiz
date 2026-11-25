@@ -1128,6 +1128,7 @@ options = q_data["options"]
 correct_ans = q_data["answer"]
 is_multi = len(correct_ans) > 1
 
+
 # 북마크 / 오답 문제 진입 시 답안 초기화
 answer_context = (
     mode,
@@ -1137,13 +1138,19 @@ answer_context = (
 
 if st.session_state.get("_answer_context") != answer_context:
 
+    # 해당 문제의 기존 체크박스 상태 초기화
     for opt_key in options.keys():
-        st.session_state.pop(f"q_{q_id}_opt_{opt_key}", None)
+        widget_key = f"q_{q_id}_opt_{opt_key}"
+        st.session_state.pop(widget_key, None)
 
-    st.session_state.pop(f"q_{q_id}_radio", None)
+    # 해당 문제의 기존 라디오 버튼 상태 초기화
+    radio_key = f"q_{q_id}_radio"
+    st.session_state.pop(radio_key, None)
 
+    # 답안 제출 상태 초기화
     st.session_state.selected_options = []
     st.session_state.submitted = False
+    st.session_state.submitted_q_id = None
 
     st.session_state["_answer_context"] = answer_context
 
@@ -1198,34 +1205,67 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+
 # 보기 선택 영역
 
 user_selections = []
-is_already_solved = (q_id in st.session_state.history)
-saved_ans = st.session_state.history.get(q_id, {}).get("user_ans", [])
+
+# 북마크 / 오답 노트에서는 기존 답안을 불러오지 않음
+is_already_solved = (
+    q_id in st.session_state.history
+    and not review_mode
+)
+
+saved_ans = (
+    st.session_state.history.get(q_id, {}).get("user_ans", [])
+    if is_already_solved else []
+)
 
 with st.container(key="answer_choices"):
+
     if is_multi:
-        st.caption(f"💡 조치 항목 {len(correct_ans)}개를 복수 선택하세요." if work_mode else f"💡 정답이 {len(correct_ans)}개인 복수 선택 문제입니다.")
+        st.caption(
+            f"💡 조치 항목 {len(correct_ans)}개를 복수 선택하세요."
+            if work_mode
+            else f"💡 정답이 {len(correct_ans)}개인 복수 선택 문제입니다."
+        )
+
         for key, val in curr_options.items():
-            is_checked_default = (key in saved_ans) if (is_already_solved and saved_ans) else False
-            checked = st.checkbox(f"**{key}.** {val}", value=is_checked_default, key=f"q_{q_id}_opt_{key}")
+
+            is_checked_default = key in saved_ans
+
+            checked = st.checkbox(
+                f"**{key}.** {val}",
+                value=is_checked_default,
+                key=f"q_{q_id}_opt_{key}"
+            )
+
             if checked:
                 user_selections.append(key)
+
     else:
-        radio_opts = [f"{key}. {val}" for key, val in curr_options.items()]
+        radio_opts = [
+            f"{key}. {val}"
+            for key, val in curr_options.items()
+        ]
+
         default_idx = None
-        if is_already_solved and saved_ans:
+
+        if saved_ans:
             for idx, key in enumerate(curr_options.keys()):
                 if key in saved_ans:
                     default_idx = idx
                     break
+
         selected_radio = st.radio(
-            "적절한 조치 가이드를 선택하십시오:" if work_mode else "가장 적절한 답안을 선택하십시오:",
+            "적절한 조치 가이드를 선택하십시오:"
+            if work_mode
+            else "가장 적절한 답안을 선택하십시오:",
             options=radio_opts,
             index=default_idx,
             key=f"q_{q_id}_radio"
         )
+
         if selected_radio:
             user_selections = [selected_radio[0]]
 
